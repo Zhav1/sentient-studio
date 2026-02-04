@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useCanvasStore } from "@/lib/store";
 import { getConstitution, saveConstitution } from "@/lib/firebase/firestore";
 import type { AgentAction } from "@/lib/ai/tools";
+import { EditableCanvas } from "@/components/editor";
 
 interface AgentEvent {
     type: "start" | "action" | "complete" | "error";
@@ -32,6 +33,7 @@ export default function DashboardPage() {
     const [finalImage, setFinalImage] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [showHistory, setShowHistory] = useState(false);
+    const [showEditor, setShowEditor] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
 
     // Load saved constitution from Firestore on mount
@@ -339,7 +341,13 @@ export default function DashboardPage() {
                     {finalImage && finalImage !== "PLACEHOLDER_IMAGE_BASE64" && (
                         <div className="mt-4 flex gap-3">
                             <button
-                                className="flex-1 px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
+                                className="flex-1 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-cyan-500 text-white font-medium hover:opacity-90 transition-all"
+                                onClick={() => setShowEditor(true)}
+                            >
+                                ✨ Edit in Canvas
+                            </button>
+                            <button
+                                className="px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
                                 onClick={() => {
                                     const link = document.createElement("a");
                                     link.href = `data:image/png;base64,${finalImage}`;
@@ -347,17 +355,46 @@ export default function DashboardPage() {
                                     link.click();
                                 }}
                             >
-                                💾 Download
+                                💾
                             </button>
                             <button
-                                className="flex-1 px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
+                                className="px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
                                 onClick={() => setFinalImage(null)}
                             >
-                                🔄 Clear
+                                🔄
                             </button>
                         </div>
                     )}
                 </div>
+
+                {/* Canvas Editor Modal */}
+                {showEditor && finalImage && (
+                    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
+                        <div className="w-full max-w-5xl max-h-[90vh] overflow-auto glass-card rounded-2xl p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-xl font-semibold flex items-center gap-2">
+                                    <span>✨</span>
+                                    <span>Canvas Editor</span>
+                                </h2>
+                                <button
+                                    onClick={() => setShowEditor(false)}
+                                    className="px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
+                                >
+                                    ✕ Close
+                                </button>
+                            </div>
+                            <EditableCanvas
+                                imageBase64={finalImage}
+                                onSave={(dataUrl) => {
+                                    // Extract base64 from data URL and update finalImage
+                                    const base64 = dataUrl.split(",")[1];
+                                    if (base64) setFinalImage(base64);
+                                    setShowEditor(false);
+                                }}
+                            />
+                        </div>
+                    </div>
+                )}
 
                 {/* Right: History Panel */}
                 <div className={`glass-card rounded-2xl p-6 lg:col-span-1 ${showHistory ? "" : "hidden lg:block"}`}>

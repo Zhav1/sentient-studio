@@ -1,6 +1,6 @@
 # Sentient Studio - Product Requirements Document
 
-> AI-Powered Marketing Asset Generator with Autonomous Agents built on **Gemini 3**
+> AI-Powered Marketing Asset Generator with Autonomous Agents & **Hybrid Canvas Editor** — built on **Gemini 3**
 
 ---
 
@@ -12,7 +12,8 @@ Sentient Studio enables marketing teams to create on-brand assets through a fron
 2. **Constitution**: **Gemini 3 Flash** extracts brand DNA (colors, style, voice)
 3. **Generation**: Agent autonomously creates pro-grade assets
 4. **Audit**: **Gemini 3** validates brand compliance with native thinking
-5. **Output**: Approved high-fidelity asset ready for use
+5. **Edit**: Hybrid canvas — manual tools + AI-assisted editing
+6. **Output**: Export at any resolution (up to 4K)
 
 ---
 
@@ -21,14 +22,13 @@ Sentient Studio enables marketing teams to create on-brand assets through a fron
 ### Technology Stack
 
 - **Frontend**: Next.js 15 (App Router, React 19)
-- **AI**: Gemini 3 Family (Flash, Pro, Image)
-- **Thinking Mode**: Native `thinkingLevel: "high"` enabled
+- **AI**: Gemini 3 Family (Flash, Pro, Pro Image)
+- **Canvas**: Fabric.js 6 (interactive editor)
+- **Thinking Mode**: Native `thinkingLevel: "high"` / `"low"` (dynamic)
 - **State**: Zustand
 - **Database**: Firestore
 
 ### Agentic System
-
-This is a **true agentic system** built on Gemini 3's frontier reasoning:
 
 ```mermaid
 graph TD
@@ -42,38 +42,48 @@ graph TD
     C --> I[complete_task]
     F -->|low score| G
     G --> E
+    E -->|approved| J[Canvas Editor]
+    J --> K[AI Edit / Manual Tools]
+    K --> L[Export]
 ```
 
 ---
 
 ## Model Selection (Gemini 3)
 
-| Usage | Model | Key Capability |
-| :--- | :--- | :--- |
-| **Default/Loop** | `gemini-3-flash-preview` | Frontier speed + High thinking |
-| **Image (Pro)** | `gemini-3-pro-image-preview` | 4K resolution + Advanced text |
-| **Search/Trends** | `gemini-3-flash-preview` | Google Search grounding |
-| **Reasoning** | Unified `gemini-3` | Native `thinkingConfig` |
+| Usage | Model | Capability |
+|-------|-------|------------|
+| Agent Loop | `gemini-3-flash-preview` | High-speed reasoning |
+| Image Gen | `gemini-3-pro-image-preview` | 4K output, multi-turn |
+| AI Edit | `gemini-3-pro-image-preview` | Conversational editing |
+| Search | `gemini-3-flash-preview` | Google Search grounding |
 
 ---
 
 ## Key Features
 
-### 1. High-Level Native Thinking
+### 1. Autonomous Agentic Workflow
 
-Leverages Gemini 3's `thinkingLevel: "high"` to replace complex prompt engineering with native reasoning.
+Gemini 3's `thinkingLevel: "high"` enables deep reasoning for brand analysis and compliance auditing.
 
-### 2. Market Grounding
+### 2. Hybrid Canvas Editor (NEW)
+
+| Mode | Tools | Technology |
+|------|-------|------------|
+| Manual | Text, shapes, draw, crop | Fabric.js |
+| AI Edit | Natural language prompts | Gemini 3 Pro Image |
+
+### 3. Multi-Turn AI Editing
+
+User says "Add a sale badge" → Gemini edits the image with context preserved via thought signatures.
+
+### 4. Market Grounding
 
 Uses Gemini 3 Flash to verify design trends via real-time search.
 
-### 3. Integrated Computer Use
+### 5. 4K Professional Output
 
-Ready for future automation with built-in Computer Use support in Gemini 3 models.
-
-### 4. Professional Asset Production
-
-Nano Banana Pro (`gemini-3-pro-image-preview`) excels at complex multi-turn creation and high-resolution output.
+Nano Banana Pro (`gemini-3-pro-image-preview`) with configurable aspect ratios and resolutions.
 
 ---
 
@@ -85,8 +95,11 @@ GEMINI_API_KEY= # Frontier access required
 
 ---
 
-## Future Roadmap
+## Roadmap
 
+- [x] Agentic generation workflow
+- [x] Brand constitution extraction
+- [x] Gemini 3 migration
+- [ ] **Canvas Editor with AI Edit** ← In Progress
 - [ ] PDF & Document branding analysis
-- [ ] Multi-turn image editing (Inpainting)
 - [ ] A/B Variant batch generation

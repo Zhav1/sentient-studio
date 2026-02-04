@@ -7,6 +7,7 @@ import {
 import type { BrandConstitution, CanvasElement } from "@/lib/types";
 import type { AuditResult } from "@/lib/types";
 import { AGENT_TOOLS, type AgentState, type AgentAction } from "./tools";
+import type { ImageConfig } from "./schemas";
 
 // ============ CLIENT INITIALIZATION ============
 
@@ -48,7 +49,7 @@ Write in first person ("I noticed...", "I'm choosing to...").`;
                 // @ts-expect-error - thinking config is valid in Gemini 3
                 thinkingConfig: {
                     includeThoughts: true,
-                    thinkingLevel: "high",
+                    thinkingLevel: "low", // Use low for simple thinking display
                 },
                 temperature: 1.0,
             },
@@ -89,17 +90,15 @@ export async function searchWebForContext(query: string): Promise<string> {
 
 /**
  * Execute a tool call and return the result
+ * 
+ * NOTE: Thinking is now handled natively by the agent loop's thinkingConfig.
+ * We removed the duplicate generateThinking() call to save tokens (~50% reduction).
  */
 export async function executeTool(
     toolName: string,
     args: Record<string, unknown>,
     state: AgentState
-): Promise<{ result: unknown; state: AgentState; thinking?: string }> {
-    // Generate thinking for this action
-    const thinking = await generateThinking(
-        `Current phase: ${state.phase}, Attempts: ${state.attempts}`,
-        `${toolName}(${JSON.stringify(args).slice(0, 100)}...)`
-    );
+): Promise<{ result: unknown; state: AgentState }> {
 
     switch (toolName) {
         case "analyze_canvas": {
@@ -108,7 +107,6 @@ export async function executeTool(
             return {
                 result: { success: true, constitution },
                 state: { ...state, constitution, phase: "analyzing" },
-                thinking,
             };
         }
 
@@ -117,13 +115,16 @@ export async function executeTool(
             const styleGuide = args.style_guide as string | undefined;
             const colorPalette = args.color_palette as string[] | undefined;
             const forbidden = args.forbidden_elements as string[] | undefined;
+            const aspectRatio = args.aspect_ratio as ImageConfig["aspectRatio"] | undefined;
+            const imageSize = args.image_size as ImageConfig["imageSize"] | undefined;
 
-            const imageBase64 = await generateImageWithNanoBanana(
-                prompt,
+            const imageBase64 = await generateImageWithNanoBanana(prompt, {
                 styleGuide,
                 colorPalette,
-                forbidden
-            );
+                forbiddenElements: forbidden,
+                aspectRatio,
+                imageSize,
+            });
 
             return {
                 result: { success: true, image_generated: true },
@@ -133,7 +134,6 @@ export async function executeTool(
                     phase: "generating",
                     attempts: state.attempts + 1,
                 },
-                thinking,
             };
         }
 
@@ -145,7 +145,6 @@ export async function executeTool(
                 return {
                     result: { success: false, error: "Missing image or constitution" },
                     state,
-                    thinking,
                 };
             }
 
@@ -164,7 +163,6 @@ export async function executeTool(
                     auditScore: auditResult.compliance_score,
                     phase: "auditing",
                 },
-                thinking,
             };
         }
 
@@ -182,7 +180,6 @@ export async function executeTool(
             return {
                 result: { success: true, refined_prompt: refinedPrompt },
                 state: { ...state, phase: "refining" },
-                thinking,
             };
         }
 
@@ -192,7 +189,6 @@ export async function executeTool(
             return {
                 result: { success: true, search_results: searchResults },
                 state,
-                thinking,
             };
         }
 
@@ -204,7 +200,6 @@ export async function executeTool(
                     final_image: args.success ? state.currentImage : null,
                 },
                 state: { ...state, phase: "complete" },
-                thinking,
             };
         }
 
@@ -212,7 +207,6 @@ export async function executeTool(
             return {
                 result: { error: `Unknown tool: ${toolName}` },
                 state,
-                thinking,
             };
     }
 }
@@ -220,15 +214,27 @@ export async function executeTool(
 // ============ NANO BANANA IMAGE GENERATION ============
 
 /**
- * Generate an image using Gemini's native Nano Banana capability
+ * Generate an image using Gemini's native Nano Banana Pro capability
+ * Supports 4K resolution via imageConfig
  */
 export async function generateImageWithNanoBanana(
     prompt: string,
-    styleGuide?: string,
-    colorPalette?: string[],
-    forbiddenElements?: string[]
+    options?: {
+        styleGuide?: string;
+        colorPalette?: string[];
+        forbiddenElements?: string[];
+        aspectRatio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4";
+        imageSize?: "1K" | "2K" | "4K";
+    }
 ): Promise<string> {
     const client = getGeminiClient();
+    const {
+        styleGuide,
+        colorPalette,
+        forbiddenElements,
+        aspectRatio = "1:1",
+        imageSize = "2K",
+    } = options || {};
 
     // Build enhanced prompt with brand constraints
     let enhancedPrompt = prompt;
@@ -245,16 +251,27 @@ export async function generateImageWithNanoBanana(
         enhancedPrompt += `\n\nFORBIDDEN (DO NOT INCLUDE): ${forbiddenElements.join(", ")}`;
     }
 
+    // Map image size to pixel dimensions
+    const sizeMap = {
+        "1K": "1024x1024",
+        "2K": "2048x2048",
+        "4K": "4096x4096",
+    };
+
     // Use Nano Banana Pro (gemini-3-pro-image-preview) 
     const model = client.getGenerativeModel({
         model: "gemini-3-pro-image-preview",
         generationConfig: {
-            // @ts-expect-error - responseModalities is valid for image generation
+            // @ts-expect-error - Gemini 3 preview properties not in SDK types
             responseModalities: ["image", "text"],
-            // @ts-expect-error - thinking config for Pro Image
+            // @ts-expect-error - imageConfig for 4K support
+            imageConfig: {
+                aspectRatio,
+                outputSize: sizeMap[imageSize],
+            },
             thinkingConfig: {
                 includeThoughts: true,
-                thinkingLevel: "high",
+                thinkingLevel: "low",
             },
             temperature: 1.0,
         },
@@ -530,21 +547,21 @@ Explain your reasoning before each action.`;
         for (const fc of functionCalls) {
             state.step++;
 
-            // Execute the tool (now includes thinking)
-            const { result, state: newState, thinking } = await executeTool(
+            // Execute the tool
+            // NOTE: Thinking is now handled natively by Gemini's thinkingConfig
+            const { result, state: newState } = await executeTool(
                 fc.name,
                 fc.args as Record<string, unknown>,
                 state
             );
             state = newState;
 
-            // Log the action with thinking
+            // Log the action
             const action: AgentAction = {
                 timestamp: Date.now(),
                 tool: fc.name,
                 input: fc.args as Record<string, unknown>,
                 output: result,
-                thinking,
             };
             state.history.push(action);
             onAction(action);

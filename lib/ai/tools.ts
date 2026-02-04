@@ -34,7 +34,7 @@ export const AGENT_TOOLS = [
     {
         name: "generate_image",
         description:
-            "Generate a marketing image using Nano Banana based on the user's prompt and brand constitution. The image will follow the brand's color palette and visual style.",
+            "Generate a marketing image using Nano Banana Pro based on the user's prompt and brand constitution. Supports 4K resolution and multiple aspect ratios.",
         parameters: {
             type: "object",
             properties: {
@@ -55,6 +55,16 @@ export const AGENT_TOOLS = [
                     type: "array",
                     items: { type: "string" },
                     description: "Elements to avoid",
+                },
+                aspect_ratio: {
+                    type: "string",
+                    enum: ["1:1", "16:9", "9:16", "4:3", "3:4"],
+                    description: "Aspect ratio of the generated image (default: 1:1)",
+                },
+                image_size: {
+                    type: "string",
+                    enum: ["1K", "2K", "4K"],
+                    description: "Resolution: 1K (1024px), 2K (2048px), 4K (4096px). Default: 2K",
                 },
             },
             required: ["prompt"],
