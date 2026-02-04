@@ -1,99 +1,53 @@
 # Project Status: Sentient Studio
 
-> Last Updated: 2026-02-04 16:40 (UTC+7)
+> Last Updated: 2026-02-04 17:15 (UTC+7)
 
-## Current Phase: ✅ AGENTIC SYSTEM COMPLETE
+## Current Phase: ✅ FRONTIER UPGRADING (GEMINI 3)
 
 ---
 
 ## Implementation Checklist
 
-### Phase 1-4: Foundation ✅
+### Phase 1-6: Core & Agents ✅
 
-- [x] Next.js 15 project setup
-- [x] Tailwind CSS with cyberpunk theme
-- [x] Canvas module (dnd-kit, file upload, hash dedup)
-- [x] Dashboard page
-- [x] Zustand stores (canvas, campaign)
-- [x] Firebase/Firestore integration
-- [x] Basic AI API routes
+- [x] Foundation (Next.js 15, Firestore)
+- [x] Agentic System (Loop, Memory, History)
+- [x] Thinking Mode (Visible Reasoning)
 
-### Phase 5: Agentic System ✅
+### Phase 9: Gemini 3 Migration ✅
 
-- [x] Tool definitions (`lib/ai/tools.ts`)
-- [x] Agent orchestrator with function calling loop
-- [x] Nano Banana image generation
-- [x] Streaming SSE API endpoint
-- [x] Real-time agent activity UI
-
-### Phase 6: Advanced Features ✅
-
-- [x] Thinking Mode - Visible AI reasoning
-- [x] Firestore Memory - Cross-session constitution persistence
-- [x] History UI - Step-by-step agent debugging
-- [x] External APIs - Google Search grounding for trends
-
-### Phase 7: Documentation ✅
-
-- [x] README.md created
-- [x] PRD updated with agentic architecture
-- [x] PROJECT_STATUS updated
+- [x] Upgrade Agent Loop to `gemini-3-flash`
+- [x] Upgrade Image Generation to `gemini-3-pro-image-preview`
+- [x] Enable native thinking config (`high`)
+- [x] Set default temperature to 1.0
+- [x] Update documentation (README, PRD, PROJECT_STATUS)
 
 ---
 
-## Key Files
+## Frontier Capabilities Enabled
 
-### Agentic Core
-
-| File | Purpose |
-| ---- | ------- |
-| `lib/ai/tools.ts` | 6 tool definitions for function calling |
-| `lib/ai/gemini.ts` | Agent orchestrator, Nano Banana, Thinking |
-| `app/api/agent/route.ts` | Streaming SSE endpoint |
-| `app/dashboard/page.tsx` | Real-time activity feed & history UI |
-
-### Foundation
-
-| File | Purpose |
-| ---- | ------- |
-| `app/canvas/page.tsx` | Moodboard canvas |
-| `components/canvas/*` | Canvas UI components |
-| `lib/store/*` | Zustand state management |
-| `lib/firebase/*` | Firestore config & operations |
+| Feature | Status | Tech |
+|---------|--------|------|
+| **Thinking** | ACTIVE | Gemini 3 Native (`high`) |
+| **4K Assets** | ACTIVE | gemini-3-pro-image-preview |
+| **Grounding** | ACTIVE | Google Search Tool |
+| **Function Calling** | ACTIVE | Gemini 3 Native |
 
 ---
 
-## What Makes This Agentic
+## Comparison: 2.0 vs 3.0
 
-| Before (Wrapper) | After (Agentic) |
-| ---------------- | --------------- |
-| User clicks → API call | AI **decides** what to do |
-| Sequential manual calls | **Function calling** - AI chooses tools |
-| Text prompts only | **Nano Banana** - real images |
-| No reasoning visible | **Thinking Mode** - visible AI reasoning |
-| Manual retry | **Self-correcting loop** until audit passes |
-| Session-only | **Memory** - remembers across sessions |
+| Feature | Gemini 2.0 (Legacy) | Gemini 3 (Frontier) |
+|---------|---------------------|---------------------|
+| **Reasoning** | Prompt Engineering | `thinking_level: "high"` |
+| **Images** | Nano Banana | Nano Banana Pro (4K) |
+| **Speed** | Standard | High-throughput Flash |
+| **Support** | Deprecated | Future-proof Frontier |
 
 ---
 
-## Running the Project
+## Next Steps
 
-```bash
-# Add API key
-echo "GEMINI_API_KEY=your_key" > .env.local
-
-# Start dev server
-npm run dev
-
-# Open browser
-http://localhost:3000
-```
-
----
-
-## Next Steps (Optional)
-
-- [ ] Deploy to Vercel
-- [ ] Add Firebase Auth
-- [ ] Multi-asset campaigns
-- [ ] Image editing/inpainting
+- [ ] Test multi-turn asset refinement (vibe coding)
+- [ ] Implement PDF brand guideline analysis
+- [ ] Prepare for production deployment

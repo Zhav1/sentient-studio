@@ -1,18 +1,18 @@
 # Sentient Studio - Product Requirements Document
 
-> AI-Powered Marketing Asset Generator with Autonomous Agents
+> AI-Powered Marketing Asset Generator with Autonomous Agents built on **Gemini 3**
 
 ---
 
 ## Overview
 
-Sentient Studio enables marketing teams to create on-brand assets through an AI-powered workflow:
+Sentient Studio enables marketing teams to create on-brand assets through a frontier agentic workflow:
 
 1. **Canvas**: Upload moodboard images and define brand elements
-2. **Constitution**: AI extracts brand DNA (colors, style, voice, restrictions)
-3. **Generation**: Agent autonomously creates marketing assets
-4. **Audit**: AI validates brand compliance, retries if needed
-5. **Output**: Approved asset ready for use
+2. **Constitution**: **Gemini 3 Flash** extracts brand DNA (colors, style, voice)
+3. **Generation**: Agent autonomously creates pro-grade assets
+4. **Audit**: **Gemini 3** validates brand compliance with native thinking
+5. **Output**: Approved high-fidelity asset ready for use
 
 ---
 
@@ -20,162 +20,73 @@ Sentient Studio enables marketing teams to create on-brand assets through an AI-
 
 ### Technology Stack
 
-- **Frontend**: Next.js 15 (App Router, React 19, TypeScript)
-- **Styling**: Tailwind CSS with cyberpunk theme
-- **State**: Zustand stores (canvas, campaign)
-- **Database**: Firestore (constitution memory, campaigns)
-- **AI**: Gemini 2.0 Flash + Nano Banana image generation
-- **Deployment**: Vercel (100% free tier)
+- **Frontend**: Next.js 15 (App Router, React 19)
+- **AI**: Gemini 3 Family (Flash, Pro, Image)
+- **Thinking Mode**: Native `thinkingLevel: "high"` enabled
+- **State**: Zustand
+- **Database**: Firestore
 
 ### Agentic System
 
-This is a **true agentic system**, not a simple API wrapper:
+This is a **true agentic system** built on Gemini 3's frontier reasoning:
 
 ```mermaid
 graph TD
     A[User Request] --> B[Agent Orchestrator]
-    B --> C{Choose Tool}
+    B --> C{Gemini 3 Decision}
     C --> D[analyze_canvas]
-    C --> E[generate_image]
+    C --> E[generate_image_pro]
     C --> F[audit_compliance]
     C --> G[refine_prompt]
     C --> H[search_trends]
     C --> I[complete_task]
-    F -->|score < 90| G
+    F -->|low score| G
     G --> E
-    F -->|score >= 90| I
 ```
 
 ---
 
-## Agent Tools
+## Model Selection (Gemini 3)
 
-| Tool | Purpose | Input | Output |
-| ---- | ------- | ----- | ------ |
-| `analyze_canvas` | Extract brand DNA | Canvas elements | BrandConstitution |
-| `generate_image` | Create via Nano Banana | Prompt, style, colors | Base64 image |
-| `audit_compliance` | Check guidelines | Image, constitution | Score, issues |
-| `refine_prompt` | Fix issues | Prompt, feedback | Refined prompt |
-| `search_trends` | Web research | Query | Trend summary |
-| `complete_task` | Signal done | Success, message | Final result |
-
----
-
-## Data Schemas
-
-### BrandConstitution
-
-```typescript
-interface BrandConstitution {
-  visual_identity: {
-    color_palette_hex: string[];
-    photography_style: string;
-    forbidden_elements: string[];
-  };
-  voice: {
-    tone: string;
-    keywords: string[];
-  };
-  risk_thresholds: {
-    nudity: "STRICT_ZERO_TOLERANCE" | "MODERATE" | "RELAXED";
-    political: "STRICT_ZERO_TOLERANCE" | "MODERATE" | "RELAXED";
-  };
-}
-```
-
-### AgentAction
-
-```typescript
-interface AgentAction {
-  timestamp: number;
-  tool: string;
-  input: Record<string, unknown>;
-  output: unknown;
-  thinking?: string; // Visible AI reasoning
-}
-```
+| Usage | Model | Key Capability |
+|-------|-------|----------------|
+| **Default/Loop** | `gemini-3-flash` | Frontier speed + High thinking |
+| **Image (Pro)** | `gemini-3-pro-image-preview` | 4K resolution + Advanced text |
+| **Search/Trends** | `gemini-3-flash` | Google Search grounding |
+| **Reasoning** | Unified `gemini-3` | Native `thinkingConfig` |
 
 ---
 
 ## Key Features
 
-### 1. Visible AI Reasoning (Thinking Mode)
+### 1. High-Level Native Thinking
 
-Uses `gemini-2.0-flash-thinking-exp` to expose the AI's reasoning process in real-time.
+Leverages Gemini 3's `thinkingLevel: "high"` to replace complex prompt engineering with native reasoning.
 
-### 2. Cross-Session Memory
+### 2. Market Grounding
 
-Brand constitutions are persisted to Firestore and loaded on subsequent sessions.
+Uses Gemini 3 Flash to verify design trends via real-time search.
 
-### 3. Self-Correcting Loop
+### 3. Integrated Computer Use
 
-If audit score < 90%, agent automatically:
+Ready for future automation with built-in Computer Use support in Gemini 3 models.
 
-1. Calls `refine_prompt` with feedback
-2. Regenerates image
-3. Re-audits (max 3 attempts)
+### 4. Professional Asset Production
 
-### 4. Real-Time Streaming
-
-Server-Sent Events stream agent actions to the dashboard for live feedback.
-
-### 5. Native Image Generation
-
-Uses Nano Banana (Gemini's native image generation) instead of external APIs.
-
----
-
-## API Endpoints
-
-| Route | Method | Purpose |
-| ----- | ------ | ------- |
-| `/api/agent` | POST | Stream agent execution via SSE |
-| `/api/analyze` | POST | Analyze canvas (legacy) |
-| `/api/generate` | POST | Generate enhanced prompt (legacy) |
-| `/api/audit` | POST | Audit asset (legacy) |
-
----
-
-## Demo Flow
-
-```text
-1. Open /canvas
-2. Drag & drop moodboard images
-3. Add color swatches and notes
-4. Navigate to /dashboard
-5. Enter: "Create a summer sale poster"
-6. Click "Run Agent"
-7. Watch real-time activity feed:
-   💭 "Analyzing moodboard for brand colors..."
-   → analyze_canvas()
-   💭 "I see tropical vibes, using cyan and coral..."
-   → generate_image()
-   💭 "Checking against forbidden elements..."
-   → audit_compliance()
-   ✅ Task complete!
-8. Download generated asset
-```
+Nano Banana Pro (`gemini-3-pro-image-preview`) excels at complex multi-turn creation and high-resolution output.
 
 ---
 
 ## Environment Variables
 
 ```env
-# Required
-GEMINI_API_KEY=
-
-# Firebase (for persistence)
-NEXT_PUBLIC_FIREBASE_API_KEY=
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+GEMINI_API_KEY= # Frontier access required
 ```
 
 ---
 
-## Future Enhancements
+## Future Roadmap
 
-- [ ] Multi-asset campaigns
-- [ ] Image editing (inpainting)
-- [ ] A/B variant generation
-- [ ] Brand guideline PDF upload
-- [ ] Team collaboration
+- [ ] PDF & Document branding analysis
+- [ ] Multi-turn image editing (Inpainting)
+- [ ] A/B Variant batch generation

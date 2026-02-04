@@ -28,9 +28,9 @@ export async function generateThinking(
     action: string
 ): Promise<string> {
     const client = getGeminiClient();
-    // Use thinking-capable model
+    // Use Gemini 3 Flash with thinking config
     const model = client.getGenerativeModel({
-        model: "gemini-2.0-flash-thinking-exp-01-21",
+        model: "gemini-3-flash",
     });
 
     const prompt = `You are explaining your thought process as an AI agent.
@@ -42,7 +42,17 @@ Explain your reasoning in 2-3 sentences. Be specific about WHY you chose this ac
 Write in first person ("I noticed...", "I'm choosing to...").`;
 
     try {
-        const result = await model.generateContent(prompt);
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: {
+                // @ts-expect-error - thinking config is valid in Gemini 3
+                thinkingConfig: {
+                    includeThoughts: true,
+                    thinkingLevel: "high",
+                },
+                temperature: 1.0,
+            },
+        });
         return result.response.text().trim();
     } catch (error) {
         console.error("Thinking generation error:", error);
@@ -58,9 +68,10 @@ Write in first person ("I noticed...", "I'm choosing to...").`;
 export async function searchWebForContext(query: string): Promise<string> {
     const client = getGeminiClient();
     const model = client.getGenerativeModel({
-        model: "gemini-2.0-flash",
+        model: "gemini-3-flash",
         // @ts-expect-error - tools with google search is valid
         tools: [{ googleSearch: {} }],
+        generationConfig: { temperature: 1.0 },
     });
 
     try {
@@ -234,12 +245,18 @@ export async function generateImageWithNanoBanana(
         enhancedPrompt += `\n\nFORBIDDEN (DO NOT INCLUDE): ${forbiddenElements.join(", ")}`;
     }
 
-    // Use Nano Banana (gemini-2.0-flash-exp for image generation)
+    // Use Nano Banana Pro (gemini-3-pro-image-preview) 
     const model = client.getGenerativeModel({
-        model: "gemini-2.0-flash-exp",
+        model: "gemini-3-pro-image-preview",
         generationConfig: {
-            // @ts-expect-error - responseModalities is valid for image generation
+            // responseModalities is valid for image generation
             responseModalities: ["image", "text"],
+            // thinking config for Pro Image
+            thinkingConfig: {
+                includeThoughts: true,
+                thinkingLevel: "high",
+            },
+            temperature: 1.0,
         },
     });
 
@@ -270,7 +287,10 @@ export async function analyzeCanvasForConstitution(
     elements: CanvasElement[]
 ): Promise<BrandConstitution> {
     const client = getGeminiClient();
-    const model = client.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = client.getGenerativeModel({
+        model: "gemini-3-flash",
+        generationConfig: { temperature: 1.0 }
+    });
 
     const context = elements
         .map((el) => {
@@ -330,7 +350,10 @@ export async function auditImageCompliance(
     constitution: BrandConstitution
 ): Promise<AuditResult> {
     const client = getGeminiClient();
-    const model = client.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = client.getGenerativeModel({
+        model: "gemini-3-flash",
+        generationConfig: { temperature: 1.0 }
+    });
 
     const imagePart: Part = {
         inlineData: {
@@ -385,7 +408,10 @@ export async function refinePromptBasedOnFeedback(
     issues?: string[]
 ): Promise<string> {
     const client = getGeminiClient();
-    const model = client.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = client.getGenerativeModel({
+        model: "gemini-3-flash",
+        generationConfig: { temperature: 1.0 }
+    });
 
     const prompt = `You are a prompt engineer.
 
@@ -423,12 +449,20 @@ export async function runAgentLoop(
     }));
 
     const model = client.getGenerativeModel({
-        model: "gemini-2.0-flash",
+        model: "gemini-3-flash",
         tools: [{ functionDeclarations }],
         toolConfig: {
             functionCallingConfig: {
                 mode: FunctionCallingMode.AUTO,
             },
+        },
+        generationConfig: {
+            // @ts-expect-error - thinking config for agent loop
+            thinkingConfig: {
+                includeThoughts: true,
+                thinkingLevel: "high",
+            },
+            temperature: 1.0,
         },
     });
 
