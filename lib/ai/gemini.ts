@@ -275,10 +275,8 @@ export async function generateImageWithNanoBanana(
             imageConfig: {
                 aspectRatio,
             },
-            thinkingConfig: {
-                includeThoughts: true,
-                thinkingLevel: "low",
-            },
+            // Note: thinkingLevel is not supported for gemini-3-pro-image-preview
+            // The model thinks by default when generating images.
             temperature: 1.0,
         },
     });
@@ -322,7 +320,7 @@ export async function analyzeCanvasForConstitution(
             },
             temperature: 1.0,
         },
-    });
+    }, { timeout: 120000 });
 
     const context = elements
         .map((el) => {
@@ -347,12 +345,28 @@ CANVAS ELEMENTS:
 ${context}`;
 
     const result = await model.generateContent(systemPrompt);
-    const text = result.response.text();
+    const responseText = result.response.text();
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
+    // Balanced brace extraction to handle cases where the model returns extra text
+    let braceCount = 0;
+    let startIndex = responseText.indexOf('{');
+    let jsonStr = "";
+
+    if (startIndex !== -1) {
+        for (let i = startIndex; i < responseText.length; i++) {
+            if (responseText[i] === '{') braceCount++;
+            else if (responseText[i] === '}') braceCount--;
+
+            if (braceCount === 0) {
+                jsonStr = responseText.substring(startIndex, i + 1);
+                break;
+            }
+        }
+    }
+
+    if (jsonStr) {
         try {
-            const parsed = JSON.parse(jsonMatch[0]);
+            const parsed = JSON.parse(jsonStr);
             return validateAndSanitizeConstitution(parsed);
         } catch {
             // Fall through to default
@@ -406,14 +420,20 @@ export async function auditImageCompliance(
         generationConfig: {
             responseMimeType: "application/json",
             responseSchema: zodToGeminiSchema(AuditResultSchema),
+            // @ts-expect-error - thinking config is valid in Gemini 3
+            thinkingConfig: {
+                includeThoughts: true,
+                thinkingLevel: "high", // Use high for deep audit reasoning
+            },
             temperature: 1.0,
         },
-    });
+    }, { timeout: 120000 });
 
     const imagePart: Part = {
         inlineData: {
             mimeType: "image/png",
-            data: imageBase64,
+            // Strip data:image/png;base64, prefix if present
+            data: imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64,
         },
     };
 
@@ -421,12 +441,41 @@ export async function auditImageCompliance(
 Audit this generated image against the following Brand Constitution:
 ${JSON.stringify(constitution, null, 2)}
 
-Provide a compliance score (0-100), whether it passes (score >= 90), heatmap coordinates for any issues found, and fix instructions.`;
+REQUIREMENTS:
+1. Provide a compliance score (0-100).
+2. Pass is true if score >= 90.
+3. Include heatmap coordinates for any issues.
+4. Provide clear fix instructions.
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON object. Do NOT include markdown blocks, bold text, or any explanation outside the JSON.`;
 
     try {
         const result = await model.generateContent([prompt, imagePart]);
         const responseText = result.response.text();
-        return JSON.parse(responseText) as AuditResult;
+
+        // Balanced brace extraction to handle cases where the model returns extra text
+        let braceCount = 0;
+        let startIndex = responseText.indexOf('{');
+        let jsonStr = "";
+
+        if (startIndex !== -1) {
+            for (let i = startIndex; i < responseText.length; i++) {
+                if (responseText[i] === '{') braceCount++;
+                else if (responseText[i] === '}') braceCount--;
+
+                if (braceCount === 0) {
+                    jsonStr = responseText.substring(startIndex, i + 1);
+                    break;
+                }
+            }
+        }
+
+        if (jsonStr) {
+            return JSON.parse(jsonStr) as AuditResult;
+        }
+
+        throw new Error("No valid JSON object found in response");
     } catch (error) {
         console.error("Audit error:", error);
         return {
@@ -505,7 +554,7 @@ export async function runAgentLoop(
             },
             temperature: 1.0,
         },
-    });
+    }, { timeout: 120000 }); // Increase timeout to 120s for deep thinking
 
     // Initialize agent state with memory
     let state: AgentState = {
@@ -528,9 +577,8 @@ export async function runAgentLoop(
 
 USER REQUEST: "${userPrompt}"
 
-AVAILABLE CANVAS ELEMENTS:
-${JSON.stringify(canvasElements.slice(0, 10), null, 2)}
-${canvasElements.length > 10 ? `... and ${canvasElements.length - 10} more elements` : ""}
+AVAILABLE CANVAS ELEMENTS (LONG CONTEXT):
+${JSON.stringify(canvasElements, null, 2)}
 ${memoryContext}
 
 YOUR GOAL:
@@ -560,6 +608,13 @@ Explain your reasoning before each action.`;
             .filter((part) => part.functionCall)
             .map((part) => part.functionCall!);
 
+        // Extract thoughts from the model
+        // @ts-expect-error - thought part is valid in Gemini 3
+        const thoughts = candidate.content.parts
+            .map((part) => part.thought)
+            .filter(Boolean)
+            .join("\n");
+
         if (functionCalls.length === 0) {
             // No function call, agent is done or stuck
             break;
@@ -572,7 +627,6 @@ Explain your reasoning before each action.`;
             state.step++;
 
             // Execute the tool
-            // NOTE: Thinking is now handled natively by Gemini's thinkingConfig
             const { result, state: newState } = await executeTool(
                 fc.name,
                 fc.args as Record<string, unknown>,
@@ -580,12 +634,13 @@ Explain your reasoning before each action.`;
             );
             state = newState;
 
-            // Log the action
+            // Log the action with thinking
             const action: AgentAction = {
                 timestamp: Date.now(),
                 tool: fc.name,
                 input: fc.args as Record<string, unknown>,
                 output: result,
+                thinking: thoughts || undefined,
             };
             state.history.push(action);
             onAction(action);
@@ -610,8 +665,20 @@ Explain your reasoning before each action.`;
             }
         }
 
-        // Send function results back to model
-        response = await chat.sendMessage(functionResponses);
+        // Send function results back to model with retry for robustness
+        let retryCount = 0;
+        const maxRetries = 2;
+        while (retryCount <= maxRetries) {
+            try {
+                response = await chat.sendMessage(functionResponses);
+                break; // Success
+            } catch (error) {
+                retryCount++;
+                if (retryCount > maxRetries) throw error;
+                console.warn(`Agent fetch failed, retrying (${retryCount}/${maxRetries})...`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
+            }
+        }
     }
 
     // If we get here, agent didn't complete properly
