@@ -47,16 +47,16 @@ export const AuditResultSchema = z.object({
         .describe("Brand compliance score from 0-100"),
     pass: z
         .boolean()
-        .describe("Whether the image passes brand compliance (typically score >= 80)"),
-    issues: z
+        .describe("Whether the image passes brand compliance (typically score >= 90)"),
+    heatmap_coordinates: z
         .array(
             z.object({
-                area: z.string().describe("Area of the image with the issue"),
-                description: z.string().describe("What the issue is"),
-                severity: z.enum(["low", "medium", "high"]),
+                x: z.number().min(0).max(100),
+                y: z.number().min(0).max(100),
+                issue: z.string(),
             })
         )
-        .describe("List of compliance issues found"),
+        .describe("Coordinates of issues found in the image"),
     fix_instructions: z
         .string()
         .describe("Instructions for fixing the issues in a regeneration"),

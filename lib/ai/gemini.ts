@@ -7,7 +7,12 @@ import {
 import type { BrandConstitution, CanvasElement } from "@/lib/types";
 import type { AuditResult } from "@/lib/types";
 import { AGENT_TOOLS, type AgentState, type AgentAction } from "./tools";
-import type { ImageConfig } from "./schemas";
+import {
+    BrandConstitutionSchema,
+    AuditResultSchema,
+    zodToGeminiSchema,
+    type ImageConfig,
+} from "./schemas";
 
 // ============ CLIENT INITIALIZATION ============
 
@@ -264,7 +269,6 @@ export async function generateImageWithNanoBanana(
         generationConfig: {
             // @ts-expect-error - Gemini 3 preview properties not in SDK types
             responseModalities: ["image", "text"],
-            // @ts-expect-error - imageConfig for 4K support
             imageConfig: {
                 aspectRatio,
                 outputSize: sizeMap[imageSize],
@@ -306,7 +310,13 @@ export async function analyzeCanvasForConstitution(
     const client = getGeminiClient();
     const model = client.getGenerativeModel({
         model: "gemini-3-flash-preview",
-        generationConfig: { temperature: 1.0 }
+        generationConfig: {
+            // @ts-expect-error - responseMimeType is valid for Gemini 3
+            responseMimeType: "application/json",
+            // @ts-expect-error - responseSchema is valid for Gemini 3 structured outputs
+            responseSchema: zodToGeminiSchema(BrandConstitutionSchema),
+            temperature: 1.0,
+        },
     });
 
     const context = elements
@@ -321,23 +331,6 @@ export async function analyzeCanvasForConstitution(
 
     const systemPrompt = `You are the Brand Constitution Architect.
 Analyze these moodboard elements and extract the brand DNA.
-
-OUTPUT ONLY VALID JSON:
-{
-  "visual_identity": {
-    "color_palette_hex": ["#HEX1", "#HEX2"],
-    "photography_style": "description",
-    "forbidden_elements": ["element1", "element2"]
-  },
-  "voice": {
-    "tone": "description",
-    "keywords": ["keyword1", "keyword2"]
-  },
-  "risk_thresholds": {
-    "nudity": "STRICT_ZERO_TOLERANCE",
-    "political": "STRICT_ZERO_TOLERANCE"
-  }
-}
 
 CANVAS ELEMENTS:
 ${context}`;
@@ -369,7 +362,13 @@ export async function auditImageCompliance(
     const client = getGeminiClient();
     const model = client.getGenerativeModel({
         model: "gemini-3-flash-preview",
-        generationConfig: { temperature: 1.0 }
+        generationConfig: {
+            // @ts-expect-error - responseMimeType is valid for Gemini 3
+            responseMimeType: "application/json",
+            // @ts-expect-error - responseSchema is valid for Gemini 3 structured outputs
+            responseSchema: zodToGeminiSchema(AuditResultSchema),
+            temperature: 1.0,
+        },
     });
 
     const imagePart: Part = {
@@ -380,38 +379,24 @@ export async function auditImageCompliance(
     };
 
     const prompt = `You are the Brand Compliance Auditor.
-
-BRAND CONSTITUTION:
+Audit this generated image against the following Brand Constitution:
 ${JSON.stringify(constitution, null, 2)}
 
-Audit this image against the brand guidelines.
-
-OUTPUT ONLY VALID JSON:
-{
-  "compliance_score": 0-100,
-  "pass": true/false (true if score > 90),
-  "heatmap_coordinates": [{"x": 0-100, "y": 0-100, "issue": "description"}],
-  "fix_instructions": "how to fix issues"
-}`;
+Provide a compliance score (0-100), whether it passes (score >= 90), heatmap coordinates for any issues found, and fix instructions.`;
 
     try {
         const result = await model.generateContent([prompt, imagePart]);
-        const text = result.response.text();
-
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            return JSON.parse(jsonMatch[0]) as AuditResult;
-        }
+        const responseText = result.response.text();
+        return JSON.parse(responseText) as AuditResult;
     } catch (error) {
         console.error("Audit error:", error);
+        return {
+            compliance_score: 50,
+            pass: false,
+            heatmap_coordinates: [],
+            fix_instructions: "Unable to complete audit due to technical error.",
+        };
     }
-
-    return {
-        compliance_score: 50,
-        pass: false,
-        heatmap_coordinates: [],
-        fix_instructions: "Unable to complete audit",
-    };
 }
 
 // ============ PROMPT REFINEMENT ============

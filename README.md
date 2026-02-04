@@ -41,8 +41,9 @@
 
 ### 🎨 Canvas Editor
 
-- **Manual Tools** — Text, shapes, draw, crop (Fabric.js)
+- **Manual Tools** — Text, shapes, draw (Fabric.js)
 - **AI Edit** — "Add a sale badge" → Gemini edits the image
+- **🎭 Mask Inpainting** — Select regions with brush/rectangle, AI edits only inside
 - **Multi-turn** — Keep editing with context preserved
 
 ### 📤 Export
