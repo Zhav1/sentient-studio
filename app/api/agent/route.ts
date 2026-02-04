@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { runAgentLoop } from "@/lib/ai/gemini";
 import type { AgentAction } from "@/lib/ai/tools";
-import type { CanvasElement } from "@/lib/types";
+import type { CanvasElement, BrandConstitution } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,9 +13,10 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { prompt, canvasElements } = body as {
+        const { prompt, canvasElements, savedConstitution } = body as {
             prompt: string;
             canvasElements: CanvasElement[];
+            savedConstitution?: BrandConstitution | null;
         };
 
         if (!prompt) {
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
                 // Send start event
                 await sendEvent("start", {
                     message: "Agent starting...",
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
                 });
 
                 // Run the agent loop with action callback
@@ -55,9 +56,11 @@ export async function POST(request: NextRequest) {
                             step: action.timestamp,
                             tool: action.tool,
                             input: summarizeInput(action.input),
-                            thinking: getThinkingMessage(action.tool),
+                            output: summarizeOutput(action.output),
+                            thinking: action.thinking || getThinkingMessage(action.tool),
                         });
-                    }
+                    },
+                    savedConstitution
                 );
 
                 // Send final result
@@ -66,8 +69,8 @@ export async function POST(request: NextRequest) {
                     message: result.message,
                     hasImage: !!result.image,
                     image: result.image, // Base64 image data
+                    historyLength: result.history.length,
                 });
-
             } catch (error) {
                 console.error("Agent error:", error);
                 await sendEvent("error", {
@@ -82,23 +85,24 @@ export async function POST(request: NextRequest) {
             headers: {
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
+                Connection: "keep-alive",
             },
         });
-
     } catch (error) {
         console.error("API error:", error);
-        return new Response(
-            JSON.stringify({ error: "Internal server error" }),
-            { status: 500, headers: { "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ error: "Internal server error" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+        });
     }
 }
 
 /**
  * Summarize input for display (avoid sending huge base64 strings)
  */
-function summarizeInput(input: Record<string, unknown>): Record<string, unknown> {
+function summarizeInput(
+    input: Record<string, unknown>
+): Record<string, unknown> {
     const summary: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(input)) {
@@ -115,6 +119,22 @@ function summarizeInput(input: Record<string, unknown>): Record<string, unknown>
 }
 
 /**
+ * Summarize output for display
+ */
+function summarizeOutput(output: unknown): unknown {
+    if (typeof output === "object" && output !== null) {
+        const obj = output as Record<string, unknown>;
+        if ("constitution" in obj) {
+            return { ...obj, constitution: "[CONSTITUTION OBJECT]" };
+        }
+        if ("image" in obj || "final_image" in obj) {
+            return { ...obj, image: "[IMAGE DATA]", final_image: "[IMAGE DATA]" };
+        }
+    }
+    return output;
+}
+
+/**
  * Human-friendly thinking messages for each tool
  */
 function getThinkingMessage(tool: string): string {
@@ -127,6 +147,8 @@ function getThinkingMessage(tool: string): string {
             return "🛡️ Auditing image against brand guidelines...";
         case "refine_prompt":
             return "✏️ Refining the prompt based on audit feedback...";
+        case "search_trends":
+            return "🌐 Searching for current design trends...";
         case "complete_task":
             return "✅ Task complete!";
         default:

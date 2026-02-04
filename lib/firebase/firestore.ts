@@ -114,6 +114,30 @@ export async function updateConstitution(
 }
 
 /**
+ * Get constitution from brand cache (for memory)
+ */
+export async function getConstitution(brandId: string): Promise<BrandConstitution | null> {
+    const brand = await getBrand(brandId);
+    return brand?.constitution_cache || null;
+}
+
+/**
+ * Save constitution to brand (simplified for memory)
+ */
+export async function saveConstitution(
+    brandId: string,
+    constitution: BrandConstitution
+): Promise<void> {
+    const db = getDb();
+    const brandRef = doc(db, "brands", brandId);
+
+    await updateDoc(brandRef, {
+        constitution_cache: constitution,
+        last_updated: serverTimestamp(),
+    });
+}
+
+/**
  * Subscribe to brand updates (real-time)
  */
 export function subscribeToBrand(

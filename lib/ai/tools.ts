@@ -104,6 +104,21 @@ export const AGENT_TOOLS = [
         },
     },
     {
+        name: "search_trends",
+        description:
+            "Search the web for current design trends, brand inspiration, or market research. Use this to enhance generation with real-world context.",
+        parameters: {
+            type: "object",
+            properties: {
+                query: {
+                    type: "string",
+                    description: "Search query for trends or inspiration",
+                },
+            },
+            required: ["query"],
+        },
+    },
+    {
         name: "complete_task",
         description:
             "Signal that the task is complete. Call this when an image passes audit or when giving up after max retries.",

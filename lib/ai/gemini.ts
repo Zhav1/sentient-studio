@@ -18,6 +18,62 @@ function getGeminiClient(): GoogleGenerativeAI {
     return new GoogleGenerativeAI(apiKey);
 }
 
+// ============ THINKING MODE ============
+
+/**
+ * Generate reasoning/thinking for an action (visible AI reasoning)
+ */
+export async function generateThinking(
+    context: string,
+    action: string
+): Promise<string> {
+    const client = getGeminiClient();
+    // Use thinking-capable model
+    const model = client.getGenerativeModel({
+        model: "gemini-2.0-flash-thinking-exp-01-21",
+    });
+
+    const prompt = `You are explaining your thought process as an AI agent.
+
+CONTEXT: ${context}
+ACTION YOU'RE ABOUT TO TAKE: ${action}
+
+Explain your reasoning in 2-3 sentences. Be specific about WHY you chose this action.
+Write in first person ("I noticed...", "I'm choosing to...").`;
+
+    try {
+        const result = await model.generateContent(prompt);
+        return result.response.text().trim();
+    } catch (error) {
+        console.error("Thinking generation error:", error);
+        return `Executing ${action}...`;
+    }
+}
+
+// ============ GOOGLE SEARCH GROUNDING ============
+
+/**
+ * Search the web for brand/trend research using Gemini with Google Search
+ */
+export async function searchWebForContext(query: string): Promise<string> {
+    const client = getGeminiClient();
+    const model = client.getGenerativeModel({
+        model: "gemini-2.0-flash",
+        // @ts-expect-error - tools with google search is valid
+        tools: [{ googleSearch: {} }],
+    });
+
+    try {
+        const result = await model.generateContent(
+            `Search and summarize: ${query}. Focus on visual trends, colors, and design patterns.`
+        );
+        return result.response.text();
+    } catch (error) {
+        console.error("Search error:", error);
+        return "";
+    }
+}
+
 // ============ TOOL EXECUTION ============
 
 /**
@@ -27,7 +83,13 @@ export async function executeTool(
     toolName: string,
     args: Record<string, unknown>,
     state: AgentState
-): Promise<{ result: unknown; state: AgentState }> {
+): Promise<{ result: unknown; state: AgentState; thinking?: string }> {
+    // Generate thinking for this action
+    const thinking = await generateThinking(
+        `Current phase: ${state.phase}, Attempts: ${state.attempts}`,
+        `${toolName}(${JSON.stringify(args).slice(0, 100)}...)`
+    );
+
     switch (toolName) {
         case "analyze_canvas": {
             const elements = args.canvas_elements as CanvasElement[];
@@ -35,6 +97,7 @@ export async function executeTool(
             return {
                 result: { success: true, constitution },
                 state: { ...state, constitution, phase: "analyzing" },
+                thinking,
             };
         }
 
@@ -59,6 +122,7 @@ export async function executeTool(
                     phase: "generating",
                     attempts: state.attempts + 1,
                 },
+                thinking,
             };
         }
 
@@ -70,6 +134,7 @@ export async function executeTool(
                 return {
                     result: { success: false, error: "Missing image or constitution" },
                     state,
+                    thinking,
                 };
             }
 
@@ -88,6 +153,7 @@ export async function executeTool(
                     auditScore: auditResult.compliance_score,
                     phase: "auditing",
                 },
+                thinking,
             };
         }
 
@@ -105,6 +171,17 @@ export async function executeTool(
             return {
                 result: { success: true, refined_prompt: refinedPrompt },
                 state: { ...state, phase: "refining" },
+                thinking,
+            };
+        }
+
+        case "search_trends": {
+            const query = args.query as string;
+            const searchResults = await searchWebForContext(query);
+            return {
+                result: { success: true, search_results: searchResults },
+                state,
+                thinking,
             };
         }
 
@@ -116,6 +193,7 @@ export async function executeTool(
                     final_image: args.success ? state.currentImage : null,
                 },
                 state: { ...state, phase: "complete" },
+                thinking,
             };
         }
 
@@ -123,6 +201,7 @@ export async function executeTool(
             return {
                 result: { error: `Unknown tool: ${toolName}` },
                 state,
+                thinking,
             };
     }
 }
@@ -330,15 +409,17 @@ Rewrite the prompt to fix these issues. Output ONLY the refined prompt, nothing 
 export async function runAgentLoop(
     userPrompt: string,
     canvasElements: CanvasElement[],
-    onAction: (action: AgentAction) => void
-): Promise<{ success: boolean; image?: string; message: string }> {
+    onAction: (action: AgentAction) => void,
+    savedConstitution?: BrandConstitution | null
+): Promise<{ success: boolean; image?: string; message: string; history: AgentAction[] }> {
     const client = getGeminiClient();
 
     // Convert our tools to Gemini's function declaration format
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const functionDeclarations: FunctionDeclaration[] = AGENT_TOOLS.map((tool) => ({
         name: tool.name,
         description: tool.description,
-        parameters: tool.parameters as FunctionDeclaration["parameters"],
+        parameters: tool.parameters as unknown as FunctionDeclaration["parameters"],
     }));
 
     const model = client.getGenerativeModel({
@@ -351,11 +432,11 @@ export async function runAgentLoop(
         },
     });
 
-    // Initialize agent state
+    // Initialize agent state with memory
     let state: AgentState = {
         step: 0,
         phase: "planning",
-        constitution: null,
+        constitution: savedConstitution || null,
         currentImage: null,
         auditScore: null,
         attempts: 0,
@@ -363,29 +444,37 @@ export async function runAgentLoop(
         history: [],
     };
 
-    // Build the initial prompt
+    // Build the initial prompt with memory context
+    const memoryContext = savedConstitution
+        ? `\n\nMEMORY: You have a saved Brand Constitution from a previous session:\n${JSON.stringify(savedConstitution, null, 2)}\nYou may skip analyze_canvas if this constitution is still relevant.`
+        : "";
+
     const systemMessage = `You are an autonomous marketing asset generator agent.
 
 USER REQUEST: "${userPrompt}"
 
 AVAILABLE CANVAS ELEMENTS:
-${JSON.stringify(canvasElements, null, 2)}
+${JSON.stringify(canvasElements.slice(0, 10), null, 2)}
+${canvasElements.length > 10 ? `... and ${canvasElements.length - 10} more elements` : ""}
+${memoryContext}
 
 YOUR GOAL:
-1. First, call analyze_canvas to understand the brand
-2. Then, call generate_image with a prompt based on the brand constitution
-3. Call audit_compliance to check the generated image
-4. If audit fails (score < 90), call refine_prompt and generate_image again
-5. Maximum 3 attempts. After that, complete with best result.
-6. When done, call complete_task
+1. First, call analyze_canvas to understand the brand (OR use saved constitution if available)
+2. Optionally call search_trends for current design trends
+3. Then, call generate_image with a prompt based on the brand constitution
+4. Call audit_compliance to check the generated image
+5. If audit fails (score < 90), call refine_prompt and generate_image again
+6. Maximum 3 attempts. After that, complete with best result.
+7. When done, call complete_task
 
-Think step by step. Execute one action at a time.`;
+Think step by step. Execute one action at a time.
+Explain your reasoning before each action.`;
 
     const chat = model.startChat();
     let response = await chat.sendMessage(systemMessage);
 
     // Agent loop - keep going until complete or max iterations
-    const maxIterations = 10;
+    const maxIterations = 12;
 
     for (let i = 0; i < maxIterations; i++) {
         const candidate = response.response.candidates?.[0];
@@ -407,20 +496,21 @@ Think step by step. Execute one action at a time.`;
         for (const fc of functionCalls) {
             state.step++;
 
-            // Execute the tool
-            const { result, state: newState } = await executeTool(
+            // Execute the tool (now includes thinking)
+            const { result, state: newState, thinking } = await executeTool(
                 fc.name,
                 fc.args as Record<string, unknown>,
                 state
             );
             state = newState;
 
-            // Log the action
+            // Log the action with thinking
             const action: AgentAction = {
                 timestamp: Date.now(),
                 tool: fc.name,
                 input: fc.args as Record<string, unknown>,
                 output: result,
+                thinking,
             };
             state.history.push(action);
             onAction(action);
@@ -440,6 +530,7 @@ Think step by step. Execute one action at a time.`;
                     success: completionResult.success,
                     image: completionResult.final_image || state.currentImage || undefined,
                     message: completionResult.message,
+                    history: state.history,
                 };
             }
         }
@@ -453,6 +544,7 @@ Think step by step. Execute one action at a time.`;
         success: state.currentImage !== null,
         image: state.currentImage || undefined,
         message: `Agent completed after ${state.attempts} attempts. Best score: ${state.auditScore || "N/A"}`,
+        history: state.history,
     };
 }
 

@@ -1,101 +1,99 @@
 # Project Status: Sentient Studio
 
-> Last Updated: 2026-02-04 16:00 (UTC+7)
+> Last Updated: 2026-02-04 16:40 (UTC+7)
 
 ## Current Phase: ✅ AGENTIC SYSTEM COMPLETE
 
 ---
 
-## What Makes This Agentic (Not a Wrapper)
+## Implementation Checklist
 
-| Before (Wrapper) | After (Agentic) |
-|------------------|-----------------|
-| User clicks → API call → Display | AI **decides** what to do next |
-| Sequential manual calls | **Function calling** - AI chooses tools |
-| Returns text prompts | **Generates real images** with Nano Banana |
-| No reasoning visible | **Real-time activity feed** shows AI working |
-| Manual retry | **Self-correcting loop** until audit passes |
+### Phase 1-4: Foundation ✅
 
----
+- [x] Next.js 15 project setup
+- [x] Tailwind CSS with cyberpunk theme
+- [x] Canvas module (dnd-kit, file upload, hash dedup)
+- [x] Dashboard page
+- [x] Zustand stores (canvas, campaign)
+- [x] Firebase/Firestore integration
+- [x] Basic AI API routes
 
-## Architecture
+### Phase 5: Agentic System ✅
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Next.js 14 (Vercel)                  │
-├─────────────────────────────────────────────────────────┤
-│  Landing Page │ Canvas (Moodboard) │ Agent Dashboard    │
-├─────────────────────────────────────────────────────────┤
-│              /api/agent (Streaming SSE)                 │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │        AGENT ORCHESTRATOR (Function Calling)    │    │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────────────┐ │    │
-│  │  │ analyze  │→│ generate │→│ audit_compliance │ │    │
-│  │  │ _canvas  │ │ _image   │ │                  │ │    │
-│  │  └──────────┘ └──────────┘ └──────────────────┘ │    │
-│  │        ↑                           │            │    │
-│  │        └───── refine_prompt ←──────┘ (if fail) │    │
-│  └─────────────────────────────────────────────────┘    │
-├─────────────────────────────────────────────────────────┤
-│         Gemini 2.0 Flash + Nano Banana (Image Gen)      │
-└─────────────────────────────────────────────────────────┘
-```
+- [x] Tool definitions (`lib/ai/tools.ts`)
+- [x] Agent orchestrator with function calling loop
+- [x] Nano Banana image generation
+- [x] Streaming SSE API endpoint
+- [x] Real-time agent activity UI
+
+### Phase 6: Advanced Features ✅
+
+- [x] Thinking Mode - Visible AI reasoning
+- [x] Firestore Memory - Cross-session constitution persistence
+- [x] History UI - Step-by-step agent debugging
+- [x] External APIs - Google Search grounding for trends
+
+### Phase 7: Documentation ✅
+
+- [x] README.md created
+- [x] PRD updated with agentic architecture
+- [x] PROJECT_STATUS updated
 
 ---
 
-## Files Created
+## Key Files
 
-### Core Agentic System
+### Agentic Core
 
 | File | Purpose |
-|------|---------|
-| `lib/ai/tools.ts` | Function calling tool definitions |
-| `lib/ai/gemini.ts` | Agent orchestrator with loop |
+| ---- | ------- |
+| `lib/ai/tools.ts` | 6 tool definitions for function calling |
+| `lib/ai/gemini.ts` | Agent orchestrator, Nano Banana, Thinking |
 | `app/api/agent/route.ts` | Streaming SSE endpoint |
-| `app/dashboard/page.tsx` | Real-time agent activity UI |
+| `app/dashboard/page.tsx` | Real-time activity feed & history UI |
 
 ### Foundation
 
 | File | Purpose |
-|------|---------|
-| `app/page.tsx` | Landing page |
-| `app/canvas/page.tsx` | Moodboard with dnd-kit |
-| `components/canvas/*` | Canvas components |
+| ---- | ------- |
+| `app/canvas/page.tsx` | Moodboard canvas |
+| `components/canvas/*` | Canvas UI components |
 | `lib/store/*` | Zustand state management |
-| `lib/firebase/*` | Firestore config |
+| `lib/firebase/*` | Firestore config & operations |
 
 ---
 
-## The "Wow" Demo Flow
+## What Makes This Agentic
 
-1. **User types**: "Create a summer sale poster"
-2. **Agent Feed shows**:
-   - 🔍 Analyzing your moodboard to understand brand DNA...
-   - 🎨 Generating image with Nano Banana...
-   - 🛡️ Auditing image against brand guidelines...
-   - ✏️ Refining prompt based on audit feedback... (if needed)
-   - ✅ Task complete!
-3. **Image appears** in real-time on dashboard
+| Before (Wrapper) | After (Agentic) |
+| ---------------- | --------------- |
+| User clicks → API call | AI **decides** what to do |
+| Sequential manual calls | **Function calling** - AI chooses tools |
+| Text prompts only | **Nano Banana** - real images |
+| No reasoning visible | **Thinking Mode** - visible AI reasoning |
+| Manual retry | **Self-correcting loop** until audit passes |
+| Session-only | **Memory** - remembers across sessions |
 
 ---
 
-## How to Run
+## Running the Project
 
 ```bash
-# 1. Add your Gemini API key
+# Add API key
 echo "GEMINI_API_KEY=your_key" > .env.local
 
-# 2. Start dev server
+# Start dev server
 npm run dev
 
-# 3. Open http://localhost:3000
+# Open browser
+http://localhost:3000
 ```
 
 ---
 
-## Key Gemini Capabilities Used
+## Next Steps (Optional)
 
-1. **Function Calling** - AI autonomously decides which tool to use
-2. **Compositional Calling** - Chains: analyze → generate → audit → refine
-3. **Nano Banana** - Native image generation (gemini-2.0-flash-exp)
-4. **Vision** - Audits generated images for compliance
+- [ ] Deploy to Vercel
+- [ ] Add Firebase Auth
+- [ ] Multi-asset campaigns
+- [ ] Image editing/inpainting
