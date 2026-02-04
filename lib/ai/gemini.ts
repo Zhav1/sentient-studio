@@ -30,7 +30,7 @@ export async function generateThinking(
     const client = getGeminiClient();
     // Use Gemini 3 Flash with thinking config
     const model = client.getGenerativeModel({
-        model: "gemini-3-flash",
+        model: "gemini-3-flash-preview",
     });
 
     const prompt = `You are explaining your thought process as an AI agent.
@@ -68,7 +68,7 @@ Write in first person ("I noticed...", "I'm choosing to...").`;
 export async function searchWebForContext(query: string): Promise<string> {
     const client = getGeminiClient();
     const model = client.getGenerativeModel({
-        model: "gemini-3-flash",
+        model: "gemini-3-flash-preview",
         // @ts-expect-error - tools with google search is valid
         tools: [{ googleSearch: {} }],
         generationConfig: { temperature: 1.0 },
@@ -249,9 +249,9 @@ export async function generateImageWithNanoBanana(
     const model = client.getGenerativeModel({
         model: "gemini-3-pro-image-preview",
         generationConfig: {
-            // responseModalities is valid for image generation
+            // @ts-expect-error - responseModalities is valid for image generation
             responseModalities: ["image", "text"],
-            // thinking config for Pro Image
+            // @ts-expect-error - thinking config for Pro Image
             thinkingConfig: {
                 includeThoughts: true,
                 thinkingLevel: "high",
@@ -288,7 +288,7 @@ export async function analyzeCanvasForConstitution(
 ): Promise<BrandConstitution> {
     const client = getGeminiClient();
     const model = client.getGenerativeModel({
-        model: "gemini-3-flash",
+        model: "gemini-3-flash-preview",
         generationConfig: { temperature: 1.0 }
     });
 
@@ -351,7 +351,7 @@ export async function auditImageCompliance(
 ): Promise<AuditResult> {
     const client = getGeminiClient();
     const model = client.getGenerativeModel({
-        model: "gemini-3-flash",
+        model: "gemini-3-flash-preview",
         generationConfig: { temperature: 1.0 }
     });
 
@@ -409,7 +409,7 @@ export async function refinePromptBasedOnFeedback(
 ): Promise<string> {
     const client = getGeminiClient();
     const model = client.getGenerativeModel({
-        model: "gemini-3-flash",
+        model: "gemini-3-flash-preview",
         generationConfig: { temperature: 1.0 }
     });
 
@@ -449,7 +449,7 @@ export async function runAgentLoop(
     }));
 
     const model = client.getGenerativeModel({
-        model: "gemini-3-flash",
+        model: "gemini-3-flash-preview",
         tools: [{ functionDeclarations }],
         toolConfig: {
             functionCallingConfig: {

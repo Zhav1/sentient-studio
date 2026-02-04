@@ -49,10 +49,10 @@ graph TD
 ## Model Selection (Gemini 3)
 
 | Usage | Model | Key Capability |
-|-------|-------|----------------|
-| **Default/Loop** | `gemini-3-flash` | Frontier speed + High thinking |
+| :--- | :--- | :--- |
+| **Default/Loop** | `gemini-3-flash-preview` | Frontier speed + High thinking |
 | **Image (Pro)** | `gemini-3-pro-image-preview` | 4K resolution + Advanced text |
-| **Search/Trends** | `gemini-3-flash` | Google Search grounding |
+| **Search/Trends** | `gemini-3-flash-preview` | Google Search grounding |
 | **Reasoning** | Unified `gemini-3` | Native `thinkingConfig` |
 
 ---

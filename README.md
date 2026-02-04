@@ -10,13 +10,12 @@
 
 **Frontier Intelligence.** We use Gemini 3's native reasoning and image generation to create high-fidelity marketing assets autonomously.
 
-| Feature | Powered By |
-|---------|-------------|
-| **Agentic Loop** | `gemini-3-flash` |
-| **Native Thinking** | `thinkingLevel: "high"` |
-| **Self-Correcting** | 90%+ Compliance Goal |
-| **4K Generation** | `gemini-3-pro-image-preview` |
-| **Visual Trends** | Google Search Grounding |
+| Usage | Model | Key Capability |
+| :--- | :--- | :--- |
+| **Default/Loop** | `gemini-3-flash-preview` | Frontier speed + High thinking |
+| **Image (Pro)** | `gemini-3-pro-image-preview` | 4K resolution + Advanced text |
+| **Search/Trends** | `gemini-3-flash-preview` | Google Search grounding |
+| **Reasoning** | Unified `gemini-3` | Native `thinkingConfig` |
 
 ## Demo Flow
 
