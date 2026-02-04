@@ -47,7 +47,7 @@ export function ConstitutionSidebar() {
                             Color Palette
                         </h3>
                         <div className="flex flex-wrap gap-2">
-                            {constitution.visual_identity.color_palette_hex.map((color, i) => (
+                            {(constitution.visual_identity?.color_palette_hex || []).map((color, i) => (
                                 <div
                                     key={i}
                                     className="flex items-center gap-2 px-3 py-2 rounded-lg glass"
@@ -68,18 +68,18 @@ export function ConstitutionSidebar() {
                             Visual Style
                         </h3>
                         <p className="text-sm glass-card p-3 rounded-lg">
-                            {constitution.visual_identity.photography_style}
+                            {constitution.visual_identity?.photography_style || "No style defined"}
                         </p>
                     </section>
 
                     {/* Forbidden Elements */}
-                    {constitution.visual_identity.forbidden_elements.length > 0 && (
+                    {(constitution.visual_identity?.forbidden_elements?.length ?? 0) > 0 && (
                         <section>
                             <h3 className="text-sm font-medium text-muted-foreground mb-2">
                                 ⛔ Forbidden Elements
                             </h3>
                             <ul className="space-y-1">
-                                {constitution.visual_identity.forbidden_elements.map((el, i) => (
+                                {(constitution.visual_identity?.forbidden_elements || []).map((el, i) => (
                                     <li
                                         key={i}
                                         className="text-sm text-red-400/80 flex items-center gap-2"
@@ -98,10 +98,10 @@ export function ConstitutionSidebar() {
                             Voice & Tone
                         </h3>
                         <p className="text-sm mb-2 glass-card p-3 rounded-lg">
-                            {constitution.voice.tone}
+                            {constitution.voice?.tone || "No tone defined"}
                         </p>
                         <div className="flex flex-wrap gap-1">
-                            {constitution.voice.keywords.map((keyword, i) => (
+                            {(constitution.voice?.keywords || []).map((keyword, i) => (
                                 <span
                                     key={i}
                                     className="px-2 py-1 rounded text-xs bg-primary/20 text-primary"
@@ -123,12 +123,12 @@ export function ConstitutionSidebar() {
                                 <span
                                     className={cn(
                                         "ml-1 font-medium",
-                                        constitution.risk_thresholds.nudity === "STRICT_ZERO_TOLERANCE"
+                                        constitution.risk_thresholds?.nudity === "STRICT_ZERO_TOLERANCE"
                                             ? "text-red-400"
                                             : "text-yellow-400"
                                     )}
                                 >
-                                    {constitution.risk_thresholds.nudity === "STRICT_ZERO_TOLERANCE"
+                                    {constitution.risk_thresholds?.nudity === "STRICT_ZERO_TOLERANCE"
                                         ? "Strict"
                                         : "Artistic OK"}
                                 </span>
@@ -138,12 +138,12 @@ export function ConstitutionSidebar() {
                                 <span
                                     className={cn(
                                         "ml-1 font-medium",
-                                        constitution.risk_thresholds.political === "STRICT_ZERO_TOLERANCE"
+                                        constitution.risk_thresholds?.political === "STRICT_ZERO_TOLERANCE"
                                             ? "text-red-400"
                                             : "text-yellow-400"
                                     )}
                                 >
-                                    {constitution.risk_thresholds.political === "STRICT_ZERO_TOLERANCE"
+                                    {constitution.risk_thresholds?.political === "STRICT_ZERO_TOLERANCE"
                                         ? "Strict"
                                         : "Satire OK"}
                                 </span>

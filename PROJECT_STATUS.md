@@ -86,6 +86,10 @@
 ### Phase 3: Polish ✅
 
 - Added advanced `ExportMenu` with multi-format support.
+- Resolved `jspdf` build errors by installing `html2canvas` and `dompurify`.
+- Fixed Gemini 3 Image API: Resolved 400 error by correcting `imageConfig` parameters.
+- Deep Dive Analysis: Implemented `thinkingLevel: "high"` for 50+ word brand extraction.
+- Cleaned up Gemini 3 type annotations for strict production builds.
 - Fully implemented structured JSON analysis for Brand Constitution.
 - Verified all systems with zero-error code analysis.
 

@@ -15,7 +15,7 @@ export const BrandConstitutionSchema = z.object({
             .describe("Array of hex color codes from the brand moodboard"),
         photography_style: z
             .string()
-            .describe("Description of the photography/visual style"),
+            .describe("DEEP DIVE: Provide a professional, evocative description (MINIMUM 50 WORDS) of the photography and visual style, including lighting, composition, and texture."),
         forbidden_elements: z
             .array(z.string())
             .describe("Elements that should never appear in brand assets"),
@@ -23,7 +23,7 @@ export const BrandConstitutionSchema = z.object({
     voice: z.object({
         tone: z
             .string()
-            .describe("The overall tone of the brand (e.g., bold, minimalist, playful)"),
+            .describe("DEEP DIVE: Provide a detailed breakdown (MINIMUM 50 WORDS) of the brand's voice and tone. Explain the emotional impact and communication style."),
         keywords: z
             .array(z.string())
             .describe("Key terms that represent the brand essence"),
@@ -82,17 +82,24 @@ export type ImageConfig = z.infer<typeof ImageConfigSchema>;
 
 /**
  * Convert Zod schema to JSON Schema for Gemini API
- * This is a simplified converter for our specific schemas
  */
-export function zodToGeminiSchema(schema: z.ZodType): object {
-    // Use zod-to-json-schema if available, otherwise use this fallback
+export function zodToGeminiSchema(schema: z.ZodType): any {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { zodToJsonSchema } = require("zod-to-json-schema");
-        return zodToJsonSchema(schema, { target: "openApi3" });
-    } catch {
-        // Fallback: manual conversion for our known schemas
-        console.warn("zod-to-json-schema not installed, using inline schema");
+        const jsonSchema = zodToJsonSchema(schema, { target: "openApi3" });
+
+        // Gemini 3 responseSchema doesn't like $schema or definitions at the top level
+        // It wants the actual schema object
+        if (jsonSchema && typeof jsonSchema === "object") {
+            const cleanSchema = { ...jsonSchema };
+            delete (cleanSchema as any).$schema;
+            delete (cleanSchema as any).definitions;
+            return cleanSchema;
+        }
+        return jsonSchema;
+    } catch (error) {
+        console.warn("zod-to-json-schema error:", error);
         return {};
     }
 }

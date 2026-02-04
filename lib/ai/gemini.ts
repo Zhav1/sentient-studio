@@ -256,12 +256,15 @@ export async function generateImageWithNanoBanana(
         enhancedPrompt += `\n\nFORBIDDEN (DO NOT INCLUDE): ${forbiddenElements.join(", ")}`;
     }
 
-    // Map image size to pixel dimensions
+    // Map image size to descriptive pixel targets
     const sizeMap = {
         "1K": "1024x1024",
         "2K": "2048x2048",
         "4K": "4096x4096",
     };
+
+    // Inject resolution intent into prompt to ensure high quality
+    enhancedPrompt += `\n\nRESOLUTION: Please target ${imageSize} (${sizeMap[imageSize as keyof typeof sizeMap]}) quality with extreme detail.`;
 
     // Use Nano Banana Pro (gemini-3-pro-image-preview) 
     const model = client.getGenerativeModel({
@@ -271,7 +274,6 @@ export async function generateImageWithNanoBanana(
             responseModalities: ["image", "text"],
             imageConfig: {
                 aspectRatio,
-                outputSize: sizeMap[imageSize],
             },
             thinkingConfig: {
                 includeThoughts: true,
@@ -311,10 +313,13 @@ export async function analyzeCanvasForConstitution(
     const model = client.getGenerativeModel({
         model: "gemini-3-flash-preview",
         generationConfig: {
-            // @ts-expect-error - responseMimeType is valid for Gemini 3
             responseMimeType: "application/json",
-            // @ts-expect-error - responseSchema is valid for Gemini 3 structured outputs
             responseSchema: zodToGeminiSchema(BrandConstitutionSchema),
+            // @ts-expect-error - thinking config is valid in Gemini 3
+            thinkingConfig: {
+                includeThoughts: true,
+                thinkingLevel: "high", // Use high for deep brand analysis
+            },
             temperature: 1.0,
         },
     });
@@ -330,7 +335,13 @@ export async function analyzeCanvasForConstitution(
         .join("\n");
 
     const systemPrompt = `You are the Brand Constitution Architect.
-Analyze these moodboard elements and extract the brand DNA.
+Analyze these moodboard elements and extract the professional brand DNA.
+
+REQUIREMENTS:
+1. Provide extremely detailed, evocative descriptions for Visual Style and Voice/Tone.
+2. Each description MUST BE MINIMUM 50 WORDS and split into professional paragraphs if necessary.
+3. Use industry standard design terminology (e.g., chiaroscuro, minimalist, Brutalist, high-fidelity).
+4. Be decisive—the brand constitution will be used to guide all future AI generations.
 
 CANVAS ELEMENTS:
 ${context}`;
@@ -341,13 +352,43 @@ ${context}`;
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
         try {
-            return JSON.parse(jsonMatch[0]) as BrandConstitution;
+            const parsed = JSON.parse(jsonMatch[0]);
+            return validateAndSanitizeConstitution(parsed);
         } catch {
             // Fall through to default
         }
     }
 
     return getDefaultConstitution();
+}
+
+/**
+ * Ensures the AI output matches the expected structure, providing defaults for missing fields
+ */
+function validateAndSanitizeConstitution(data: any): BrandConstitution {
+    const defaultConst = getDefaultConstitution();
+
+    return {
+        visual_identity: {
+            color_palette_hex: Array.isArray(data.visual_identity?.color_palette_hex)
+                ? data.visual_identity.color_palette_hex
+                : defaultConst.visual_identity.color_palette_hex,
+            photography_style: data.visual_identity?.photography_style || defaultConst.visual_identity.photography_style,
+            forbidden_elements: Array.isArray(data.visual_identity?.forbidden_elements)
+                ? data.visual_identity.forbidden_elements
+                : defaultConst.visual_identity.forbidden_elements,
+        },
+        voice: {
+            tone: data.voice?.tone || defaultConst.voice.tone,
+            keywords: Array.isArray(data.voice?.keywords)
+                ? data.voice.keywords
+                : defaultConst.voice.keywords,
+        },
+        risk_thresholds: {
+            nudity: data.risk_thresholds?.nudity || defaultConst.risk_thresholds.nudity,
+            political: data.risk_thresholds?.political || defaultConst.risk_thresholds.political,
+        },
+    };
 }
 
 // ============ COMPLIANCE AUDIT ============
@@ -363,9 +404,7 @@ export async function auditImageCompliance(
     const model = client.getGenerativeModel({
         model: "gemini-3-flash-preview",
         generationConfig: {
-            // @ts-expect-error - responseMimeType is valid for Gemini 3
             responseMimeType: "application/json",
-            // @ts-expect-error - responseSchema is valid for Gemini 3 structured outputs
             responseSchema: zodToGeminiSchema(AuditResultSchema),
             temperature: 1.0,
         },
