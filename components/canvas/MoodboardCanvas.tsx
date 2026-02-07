@@ -70,12 +70,18 @@ export function MoodboardCanvas() {
                     continue;
                 }
 
-                // Create object URL for preview
-                const url = URL.createObjectURL(file);
+                // CRITICAL: Convert to base64 data URL (not blob URL!)
+                // Blob URLs are session-only and cannot be sent to the server API
+                const base64Url = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
 
-                // Create canvas element
+                // Create canvas element with base64 URL
                 const element = createCanvasElement("image", {
-                    url,
+                    url: base64Url, // Base64 data URL, NOT blob URL
                     hash,
                     name: file.name,
                     x: Math.random() * 200,

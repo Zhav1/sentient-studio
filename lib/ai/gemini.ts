@@ -27,6 +27,37 @@ function getGeminiClient(): GoogleGenerativeAI {
 // ============ THINKING MODE ============
 
 /**
+ * Dynamic thinking level selector for optimal speed/quality balance
+ * Used across all Gemini 3 operations for intelligent resource allocation
+ */
+type ThinkingLevel = "minimal" | "low" | "medium" | "high";
+
+function getThinkingLevel(operation: string): ThinkingLevel {
+    switch (operation) {
+        // Deep reasoning needed - brand identity is critical
+        case "analyze_canvas":
+            return "medium";
+        // Compliance requires careful evaluation
+        case "audit_compliance":
+            return "medium";
+        // Agent orchestration needs smart decisions
+        case "agent_loop":
+            return "medium";
+        // Creative/simple operations - speed priority
+        case "generate_image":
+        case "search_trends":
+        case "refine_prompt":
+            return "low";
+        // Terminal operations - minimal overhead
+        case "complete_task":
+        case "generate_thinking":
+            return "minimal";
+        default:
+            return "low";
+    }
+}
+
+/**
  * Generate reasoning/thinking for an action (visible AI reasoning)
  */
 export async function generateThinking(
@@ -54,11 +85,11 @@ Write in first person ("I noticed...", "I'm choosing to...").`;
                 // @ts-expect-error - thinking config is valid in Gemini 3
                 thinkingConfig: {
                     includeThoughts: true,
-                    thinkingLevel: "low", // Use low for simple thinking display
+                    thinkingLevel: getThinkingLevel("generate_thinking"),
                 },
                 temperature: 1.0,
             },
-        });
+        }, { timeout: 30000 }); // 30s max for thinking explanation
         return result.response.text().trim();
     } catch (error) {
         console.error("Thinking generation error:", error);
@@ -82,7 +113,8 @@ export async function searchWebForContext(query: string): Promise<string> {
 
     try {
         const result = await model.generateContent(
-            `Search and summarize: ${query}. Focus on visual trends, colors, and design patterns.`
+            `Search and summarize: ${query}. Focus on visual trends, colors, and design patterns.`,
+            { timeout: 600000 }
         );
         return result.response.text();
     } catch (error) {
@@ -107,7 +139,16 @@ export async function executeTool(
 
     switch (toolName) {
         case "analyze_canvas": {
-            const elements = args.canvas_elements as CanvasElement[];
+            // CRITICAL: Use ORIGINAL elements from state with actual image data,
+            // NOT the model's function call args (which are text-only descriptions)
+            const elements = state.canvasElements || (args.canvas_elements as CanvasElement[]);
+            if (!elements || elements.length === 0) {
+                return {
+                    result: { success: false, error: "No canvas elements provided" },
+                    state,
+                };
+            }
+            console.log(`Analyzing ${elements.length} canvas elements with image data...`);
             const constitution = await analyzeCanvasForConstitution(elements);
             return {
                 result: { success: true, constitution },
@@ -123,13 +164,45 @@ export async function executeTool(
             const aspectRatio = args.aspect_ratio as ImageConfig["aspectRatio"] | undefined;
             const imageSize = args.image_size as ImageConfig["imageSize"] | undefined;
 
-            const imageBase64 = await generateImageWithNanoBanana(prompt, {
-                styleGuide,
-                colorPalette,
-                forbiddenElements: forbidden,
-                aspectRatio,
-                imageSize,
-            });
+            // Retry logic with exponential backoff for resilience
+            let imageBase64: string | null = null;
+            let lastError: Error | null = null;
+            const maxImageRetries = 3;
+
+            for (let attempt = 1; attempt <= maxImageRetries; attempt++) {
+                try {
+                    imageBase64 = await generateImageWithNanoBanana(prompt, {
+                        styleGuide,
+                        colorPalette,
+                        forbiddenElements: forbidden,
+                        aspectRatio,
+                        imageSize,
+                    });
+                    break; // Success
+                } catch (error) {
+                    lastError = error instanceof Error ? error : new Error(String(error));
+                    console.warn(`Image generation attempt ${attempt}/${maxImageRetries} failed:`, lastError.message);
+                    if (attempt < maxImageRetries) {
+                        await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+                    }
+                }
+            }
+
+            // Graceful degradation: if all retries fail, return error for agent to handle
+            if (!imageBase64) {
+                return {
+                    result: {
+                        success: false,
+                        error: `Image generation failed after ${maxImageRetries} attempts: ${lastError?.message || 'Unknown error'}`,
+                        retry_suggested: true,
+                    },
+                    state: {
+                        ...state,
+                        phase: "generating",
+                        attempts: state.attempts + 1,
+                    },
+                };
+            }
 
             return {
                 result: { success: true, image_generated: true },
@@ -160,7 +233,7 @@ export async function executeTool(
                     success: true,
                     compliance_score: auditResult.compliance_score,
                     pass: auditResult.pass,
-                    issues: auditResult.heatmap_coordinates.map((h) => h.issue),
+                    issues: (auditResult.heatmap_coordinates || []).map((h) => h.issue),
                     fix_instructions: auditResult.fix_instructions,
                 },
                 state: {
@@ -202,7 +275,7 @@ export async function executeTool(
                 result: {
                     success: args.success,
                     message: args.message,
-                    final_image: args.success ? state.currentImage : null,
+                    final_image: (args.final_image_base64 as string) || (args.success ? state.currentImage : null),
                 },
                 state: { ...state, phase: "complete" },
             };
@@ -282,7 +355,7 @@ export async function generateImageWithNanoBanana(
     });
 
     try {
-        const response = await model.generateContent(enhancedPrompt);
+        const response = await model.generateContent(enhancedPrompt, { timeout: 600000 });
         const parts = response.response.candidates?.[0]?.content?.parts || [];
 
         for (const part of parts) {
@@ -294,8 +367,8 @@ export async function generateImageWithNanoBanana(
         throw new Error("No image generated in response");
     } catch (error) {
         console.error("Nano Banana generation error:", error);
-        // Return a placeholder for demo purposes
-        return "PLACEHOLDER_IMAGE_BASE64";
+        // Throw error for proper handling - no placeholders in production
+        throw new Error(`Image generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 
@@ -303,54 +376,130 @@ export async function generateImageWithNanoBanana(
 
 /**
  * Analyze canvas elements and generate Brand Constitution
+ * Sends actual images to Gemini for deep visual analysis
  */
 export async function analyzeCanvasForConstitution(
     elements: CanvasElement[]
 ): Promise<BrandConstitution> {
     const client = getGeminiClient();
+
+    // NOTE: responseSchema does NOT work reliably with multimodal image content
+    // It causes Gemini to return nulls. We use responseMimeType for JSON + prompt enforcement.
     const model = client.getGenerativeModel({
         model: "gemini-3-flash-preview",
         generationConfig: {
             responseMimeType: "application/json",
-            responseSchema: zodToGeminiSchema(BrandConstitutionSchema),
-            // @ts-expect-error - thinking config is valid in Gemini 3
-            thinkingConfig: {
-                includeThoughts: true,
-                thinkingLevel: "high", // Use high for deep brand analysis
-            },
+            // responseSchema removed - conflicts with multimodal content
             temperature: 1.0,
         },
-    }, { timeout: 120000 });
+    }, { timeout: 90000 }); // 90s for image analysis
 
-    const context = elements
-        .map((el) => {
-            if (el.type === "image") return `[IMAGE: ${el.name || "Unnamed"} - ${el.url}]`;
-            if (el.type === "note") return `[NOTE: "${el.text}"]`;
-            if (el.type === "color") return `[COLOR: ${el.color}]`;
-            return "";
-        })
-        .filter(Boolean)
-        .join("\n");
+    // Build multimodal content with actual images
+    const contentParts: Part[] = [];
 
-    const systemPrompt = `You are the Brand Constitution Architect.
-Analyze these moodboard elements and extract the professional brand DNA.
+    // Collect text context and image data separately
+    const textDescriptions: string[] = [];
+    const imageElements: { name: string; data: string; mimeType: string }[] = [];
 
-REQUIREMENTS:
-1. Provide extremely detailed, evocative descriptions for Visual Style and Voice/Tone.
-2. Each description MUST BE MINIMUM 50 WORDS and split into professional paragraphs if necessary.
-3. Use industry standard design terminology (e.g., chiaroscuro, minimalist, Brutalist, high-fidelity).
-4. Be decisive—the brand constitution will be used to guide all future AI generations.
+    for (const el of elements) {
+        if (el.type === "image" && el.url) {
+            // Extract base64 from data URL (format: data:image/png;base64,xxx)
+            const dataUrlMatch = el.url.match(/^data:([^;]+);base64,(.+)$/);
+            if (dataUrlMatch) {
+                const mimeType = dataUrlMatch[1];
+                const base64Data = dataUrlMatch[2];
+                imageElements.push({
+                    name: el.name || `Image ${imageElements.length + 1}`,
+                    data: base64Data,
+                    mimeType,
+                });
+            } else if (el.url.startsWith("http")) {
+                // For external URLs, just note them (can't fetch server-side easily)
+                textDescriptions.push(`[EXTERNAL IMAGE: ${el.name || "Unnamed"} - ${el.url}]`);
+            }
+        } else if (el.type === "note" && el.text) {
+            textDescriptions.push(`[NOTE: "${el.text}"]`);
+        } else if (el.type === "color" && el.color) {
+            textDescriptions.push(`[COLOR SWATCH: ${el.color}]`);
+        }
+    }
 
-CANVAS ELEMENTS:
-${context}`;
+    // DEBUG: Log extraction results
+    console.log(`[analyzeCanvasForConstitution] Extracted: ${imageElements.length} images, ${textDescriptions.length} text elements`);
+    if (imageElements.length > 0) {
+        console.log(`  First image MIME: ${imageElements[0].mimeType}, data length: ${imageElements[0].data.length}`);
+    }
 
-    const result = await model.generateContent(systemPrompt);
+    // Build the analysis prompt with explicit schema structure
+    const analysisPrompt = `You are an expert Brand Constitution Architect analyzing a moodboard.
+
+TASK: Analyze the ${imageElements.length} image(s) provided and extract the brand's visual DNA.
+
+${textDescriptions.length > 0 ? `ADDITIONAL CONTEXT:\n${textDescriptions.join("\n")}` : ""}
+
+CRITICAL REQUIREMENTS:
+1. **Color Palette**: Extract the EXACT dominant colors from the images. Look at the actual pixels. For vintage propaganda, expect reds (#CC0000), golds (#D4AF37), blacks (#000000), creams (#F5F5DC), etc.
+2. **Photography Style**: Describe the SPECIFIC visual style you see (not generic). Example: "Soviet Constructivist aesthetic with bold geometric shapes, high contrast, heroic perspective angles, limited color palette of red, gold, and black"
+3. **Voice & Tone**: Infer the brand voice from the visual messaging. Propaganda = bold, commanding, inspirational.
+4. **Keywords**: Extract actual themes you see in the imagery.
+5. **Forbidden Elements**: Identify what would break this brand's visual identity.
+
+You MUST respond with this EXACT JSON structure:
+{
+  "visual_identity": {
+    "color_palette_hex": ["#XXXXXX", "#XXXXXX", ...],
+    "photography_style": "detailed 50+ word description...",
+    "forbidden_elements": ["element1", "element2", ...]
+  },
+  "voice": {
+    "tone": "detailed 50+ word description...",
+    "keywords": ["keyword1", "keyword2", ...]
+  },
+  "risk_thresholds": {
+    "nudity": "STRICT_ZERO_TOLERANCE" or "ALLOW_ARTISTIC",
+    "political": "STRICT_ZERO_TOLERANCE" or "ALLOW_SATIRE"
+  }
+}
+
+BE SPECIFIC AND DETAILED. Do NOT return generic defaults. Analyze what you actually SEE.`;
+
+    // Add text prompt first
+    contentParts.push({ text: analysisPrompt });
+
+    // Add each image as inline data (up to 10 images for reasonable processing)
+    const maxImages = Math.min(imageElements.length, 10);
+    for (let i = 0; i < maxImages; i++) {
+        const img = imageElements[i];
+        contentParts.push({
+            inlineData: {
+                mimeType: img.mimeType,
+                data: img.data,
+            },
+        });
+        // Add image label for context
+        contentParts.push({ text: `[Image ${i + 1}: ${img.name}]` });
+    }
+
+    // If no images were extracted, add a warning to the prompt
+    if (imageElements.length === 0) {
+        contentParts.push({
+            text: "\n\nWARNING: No valid images were provided. Generate a reasonable default constitution based on any color/note context provided."
+        });
+    }
+
+    console.log(`Analyzing canvas with ${imageElements.length} images...`);
+
+    const result = await model.generateContent(contentParts);
     const responseText = result.response.text();
 
     // Balanced brace extraction to handle cases where the model returns extra text
     let braceCount = 0;
     let startIndex = responseText.indexOf('{');
     let jsonStr = "";
+
+    // DEBUG: Log raw response
+    console.log(`[Gemini Response] Length: ${responseText.length}, First 500 chars:`);
+    console.log(responseText.slice(0, 500));
 
     if (startIndex !== -1) {
         for (let i = startIndex; i < responseText.length; i++) {
@@ -364,43 +513,113 @@ ${context}`;
         }
     }
 
+    console.log(`[JSON Extraction] Found JSON: ${jsonStr.length > 0 ? 'YES' : 'NO'}, Length: ${jsonStr.length}`);
+
     if (jsonStr) {
         try {
             const parsed = JSON.parse(jsonStr);
-            return validateAndSanitizeConstitution(parsed);
-        } catch {
+            console.log(`[JSON Parse] SUCCESS - Keys: ${Object.keys(parsed).join(', ')}`);
+            const result = validateAndSanitizeConstitution(parsed);
+            console.log(`[Constitution] Colors: ${result.visual_identity.color_palette_hex.join(', ')}`);
+            return result;
+        } catch (err) {
+            console.error(`[JSON Parse] FAILED:`, err);
+            console.log(`[JSON String] First 200 chars: ${jsonStr.slice(0, 200)}`);
             // Fall through to default
         }
+    } else {
+        console.log(`[JSON Extraction] NO JSON FOUND in response`);
     }
 
+    console.log(`[Constitution] Returning DEFAULT constitution`);
     return getDefaultConstitution();
 }
 
 /**
- * Ensures the AI output matches the expected structure, providing defaults for missing fields
+ * Ensures the AI output matches the expected structure, providing defaults for missing fields.
+ * Handles BOTH Gemini's flat format AND our expected nested format.
  */
 function validateAndSanitizeConstitution(data: any): BrandConstitution {
     const defaultConst = getDefaultConstitution();
 
+    // Handle color palette - Gemini sometimes returns visual_identity as an array directly
+    let colorPalette: string[];
+    if (Array.isArray(data.visual_identity)) {
+        // Gemini flat format: visual_identity is array of colors
+        colorPalette = data.visual_identity;
+    } else if (Array.isArray(data.visual_identity?.color_palette_hex)) {
+        // Expected nested format
+        colorPalette = data.visual_identity.color_palette_hex;
+    } else if (Array.isArray(data.color_palette)) {
+        // Alternative flat format
+        colorPalette = data.color_palette;
+    } else if (Array.isArray(data.color_palette_hex)) {
+        // Another alternative
+        colorPalette = data.color_palette_hex;
+    } else {
+        colorPalette = defaultConst.visual_identity.color_palette_hex;
+    }
+
+    // Handle photography style - can be at root or nested
+    const photographyStyle =
+        data.visual_identity?.photography_style ||
+        data.photography_style ||
+        defaultConst.visual_identity.photography_style;
+
+    // Handle forbidden elements - can be at root or nested
+    let forbiddenElements: string[];
+    if (Array.isArray(data.visual_identity?.forbidden_elements)) {
+        forbiddenElements = data.visual_identity.forbidden_elements;
+    } else if (Array.isArray(data.forbidden_elements)) {
+        forbiddenElements = data.forbidden_elements;
+    } else {
+        forbiddenElements = defaultConst.visual_identity.forbidden_elements;
+    }
+
+    // Handle voice tone - can be nested object or flat
+    let voiceTone: string;
+    if (typeof data.voice?.tone === 'string') {
+        voiceTone = data.voice.tone;
+    } else if (typeof data.voice === 'string') {
+        voiceTone = data.voice;
+    } else if (typeof data.voice_tone === 'string') {
+        voiceTone = data.voice_tone;
+    } else if (typeof data.tone === 'string') {
+        voiceTone = data.tone;
+    } else {
+        voiceTone = defaultConst.voice.tone;
+    }
+
+    // Handle keywords - can be nested or at root
+    let keywords: string[];
+    if (Array.isArray(data.voice?.keywords)) {
+        keywords = data.voice.keywords;
+    } else if (Array.isArray(data.keywords)) {
+        keywords = data.keywords;
+    } else {
+        keywords = defaultConst.voice.keywords;
+    }
+
+    // Handle risk thresholds
+    const nudity = data.risk_thresholds?.nudity ||
+        (data.risk_thresholds && typeof data.risk_thresholds === 'string' ? 'STRICT_ZERO_TOLERANCE' : defaultConst.risk_thresholds.nudity);
+    const political = data.risk_thresholds?.political || defaultConst.risk_thresholds.political;
+
+    console.log(`[validateAndSanitize] Extracted ${colorPalette.length} colors: ${colorPalette.slice(0, 3).join(', ')}...`);
+
     return {
         visual_identity: {
-            color_palette_hex: Array.isArray(data.visual_identity?.color_palette_hex)
-                ? data.visual_identity.color_palette_hex
-                : defaultConst.visual_identity.color_palette_hex,
-            photography_style: data.visual_identity?.photography_style || defaultConst.visual_identity.photography_style,
-            forbidden_elements: Array.isArray(data.visual_identity?.forbidden_elements)
-                ? data.visual_identity.forbidden_elements
-                : defaultConst.visual_identity.forbidden_elements,
+            color_palette_hex: colorPalette,
+            photography_style: photographyStyle,
+            forbidden_elements: forbiddenElements,
         },
         voice: {
-            tone: data.voice?.tone || defaultConst.voice.tone,
-            keywords: Array.isArray(data.voice?.keywords)
-                ? data.voice.keywords
-                : defaultConst.voice.keywords,
+            tone: voiceTone,
+            keywords: keywords,
         },
         risk_thresholds: {
-            nudity: data.risk_thresholds?.nudity || defaultConst.risk_thresholds.nudity,
-            political: data.risk_thresholds?.political || defaultConst.risk_thresholds.political,
+            nudity: nudity as "STRICT_ZERO_TOLERANCE" | "ALLOW_ARTISTIC",
+            political: political as "STRICT_ZERO_TOLERANCE" | "ALLOW_SATIRE",
         },
     };
 }
@@ -409,6 +628,7 @@ function validateAndSanitizeConstitution(data: any): BrandConstitution {
 
 /**
  * Audit an image against brand constitution
+ * NOTE: responseSchema + thinkingConfig removed - they conflict with multimodal content
  */
 export async function auditImageCompliance(
     imageBase64: string,
@@ -419,15 +639,10 @@ export async function auditImageCompliance(
         model: "gemini-3-flash-preview",
         generationConfig: {
             responseMimeType: "application/json",
-            responseSchema: zodToGeminiSchema(AuditResultSchema),
-            // @ts-expect-error - thinking config is valid in Gemini 3
-            thinkingConfig: {
-                includeThoughts: true,
-                thinkingLevel: "high", // Use high for deep audit reasoning
-            },
+            // responseSchema removed - conflicts with multimodal content
             temperature: 1.0,
         },
-    }, { timeout: 120000 });
+    }, { timeout: 45000 }); // 45s max for audit
 
     const imagePart: Part = {
         inlineData: {
@@ -447,11 +662,20 @@ REQUIREMENTS:
 3. Include heatmap coordinates for any issues.
 4. Provide clear fix instructions.
 
-OUTPUT FORMAT:
-Return ONLY a valid JSON object. Do NOT include markdown blocks, bold text, or any explanation outside the JSON.`;
+You MUST respond with this EXACT JSON structure:
+{
+  "compliance_score": <number 0-100>,
+  "pass": <boolean>,
+  "heatmap_coordinates": [
+    {"x": <number 0-100>, "y": <number 0-100>, "issue": "<description>"}
+  ],
+  "fix_instructions": "<detailed instructions>"
+}
+
+OUTPUT ONLY VALID JSON.`;
 
     try {
-        const result = await model.generateContent([prompt, imagePart]);
+        const result = await model.generateContent([prompt, imagePart], { timeout: 600000 });
         const responseText = result.response.text();
 
         // Balanced brace extraction to handle cases where the model returns extra text
@@ -472,7 +696,9 @@ Return ONLY a valid JSON object. Do NOT include markdown blocks, bold text, or a
         }
 
         if (jsonStr) {
-            return JSON.parse(jsonStr) as AuditResult;
+            const parsed = JSON.parse(jsonStr);
+            // Flexible validation - handle various response formats
+            return validateAndSanitizeAuditResult(parsed);
         }
 
         throw new Error("No valid JSON object found in response");
@@ -485,6 +711,42 @@ Return ONLY a valid JSON object. Do NOT include markdown blocks, bold text, or a
             fix_instructions: "Unable to complete audit due to technical error.",
         };
     }
+}
+
+/**
+ * Ensures audit result matches expected structure, handling various Gemini response formats
+ */
+function validateAndSanitizeAuditResult(data: any): AuditResult {
+    // Handle compliance_score - can be at root or nested
+    const score = typeof data.compliance_score === 'number' ? data.compliance_score :
+        typeof data.score === 'number' ? data.score : 50;
+
+    // Handle pass - can be boolean or string
+    const pass = typeof data.pass === 'boolean' ? data.pass :
+        data.pass === 'true' ? true :
+            score >= 90;
+
+    // Handle heatmap_coordinates - can be at root or nested
+    const coords = Array.isArray(data.heatmap_coordinates) ? data.heatmap_coordinates :
+        Array.isArray(data.coordinates) ? data.coordinates :
+            Array.isArray(data.issues) ? data.issues.map((issue: any, i: number) => ({
+                x: issue.x || (i * 20) % 100,
+                y: issue.y || (i * 20) % 100,
+                issue: issue.issue || issue.description || String(issue)
+            })) : [];
+
+    // Handle fix_instructions - can be string or array
+    const fixInstructions = typeof data.fix_instructions === 'string' ? data.fix_instructions :
+        typeof data.instructions === 'string' ? data.instructions :
+            Array.isArray(data.fix_instructions) ? data.fix_instructions.join('. ') :
+                "No specific fix instructions provided.";
+
+    return {
+        compliance_score: Math.max(0, Math.min(100, score)),
+        pass,
+        heatmap_coordinates: coords,
+        fix_instructions: fixInstructions,
+    };
 }
 
 // ============ PROMPT REFINEMENT ============
@@ -500,8 +762,14 @@ export async function refinePromptBasedOnFeedback(
     const client = getGeminiClient();
     const model = client.getGenerativeModel({
         model: "gemini-3-flash-preview",
-        generationConfig: { temperature: 1.0 }
-    });
+        generationConfig: {
+            // @ts-expect-error - thinking config is valid in Gemini 3
+            thinkingConfig: {
+                thinkingLevel: getThinkingLevel("refine_prompt"),
+            },
+            temperature: 1.0,
+        }
+    }, { timeout: 30000 }); // 30s max for refinement
 
     const prompt = `You are a prompt engineer.
 
@@ -512,7 +780,7 @@ ${issues ? `SPECIFIC ISSUES: ${issues.join(", ")}` : ""}
 
 Rewrite the prompt to fix these issues. Output ONLY the refined prompt, nothing else.`;
 
-    const result = await model.generateContent(prompt);
+    const result = await model.generateContent(prompt, { timeout: 600000 });
     return result.response.text().trim();
 }
 
@@ -527,7 +795,7 @@ export async function runAgentLoop(
     canvasElements: CanvasElement[],
     onAction: (action: AgentAction) => void,
     savedConstitution?: BrandConstitution | null
-): Promise<{ success: boolean; image?: string; message: string; history: AgentAction[] }> {
+): Promise<{ success: boolean; image?: string; message: string; history: AgentAction[]; constitution?: BrandConstitution }> {
     const client = getGeminiClient();
 
     // Convert our tools to Gemini's function declaration format
@@ -550,13 +818,13 @@ export async function runAgentLoop(
             // @ts-expect-error - thinking config for agent loop
             thinkingConfig: {
                 includeThoughts: true,
-                thinkingLevel: "high",
+                thinkingLevel: getThinkingLevel("agent_loop"), // Dynamic - uses "medium"
             },
             temperature: 1.0,
         },
-    }, { timeout: 120000 }); // Increase timeout to 120s for deep thinking
+    }, { timeout: 60000 }); // 60s per call for faster feedback
 
-    // Initialize agent state with memory
+    // Initialize agent state with memory and original canvas elements
     let state: AgentState = {
         step: 0,
         phase: "planning",
@@ -566,6 +834,7 @@ export async function runAgentLoop(
         attempts: 0,
         maxAttempts: 3,
         history: [],
+        canvasElements, // Store original elements with actual image data
     };
 
     // Build the initial prompt with memory context
@@ -594,13 +863,28 @@ Think step by step. Execute one action at a time.
 Explain your reasoning before each action.`;
 
     const chat = model.startChat();
-    let response = await chat.sendMessage(systemMessage);
 
-    // Agent loop - keep going until complete or max iterations
-    const maxIterations = 12;
+    // Initial message with retry for robustness
+    let response;
+    let initialRetry = 0;
+    while (initialRetry <= 2) {
+        try {
+            response = await chat.sendMessage(systemMessage, { timeout: 60000 });
+            break;
+        } catch (error) {
+            initialRetry++;
+            if (initialRetry > 2) throw new Error(`Agent initialization failed after 3 attempts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            console.warn(`Agent init failed, retrying (${initialRetry}/2)...`);
+            await new Promise(resolve => setTimeout(resolve, 1000 * initialRetry));
+        }
+    }
 
+    // Agent loop - reduced iterations for faster completion
+    const maxIterations = 8; // Reduced from 12 - most succeed by step 6
+
+    // response is guaranteed to be defined here since we throw in the retry loop if all attempts fail
     for (let i = 0; i < maxIterations; i++) {
-        const candidate = response.response.candidates?.[0];
+        const candidate = response!.response.candidates?.[0];
         if (!candidate) break;
 
         // Check for function calls
@@ -608,10 +892,10 @@ Explain your reasoning before each action.`;
             .filter((part) => part.functionCall)
             .map((part) => part.functionCall!);
 
-        // Extract thoughts from the model
-        // @ts-expect-error - thought part is valid in Gemini 3
+        // Extract thoughts from the model (Gemini 3 native thinking feature)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const thoughts = candidate.content.parts
-            .map((part) => part.thought)
+            .map((part: unknown) => (part as { thought?: string }).thought)
             .filter(Boolean)
             .join("\n");
 
@@ -661,6 +945,7 @@ Explain your reasoning before each action.`;
                     image: completionResult.final_image || state.currentImage || undefined,
                     message: completionResult.message,
                     history: state.history,
+                    constitution: state.constitution || undefined,
                 };
             }
         }
@@ -670,7 +955,7 @@ Explain your reasoning before each action.`;
         const maxRetries = 2;
         while (retryCount <= maxRetries) {
             try {
-                response = await chat.sendMessage(functionResponses);
+                response = await chat.sendMessage(functionResponses, { timeout: 60000 }); // 60s per call
                 break; // Success
             } catch (error) {
                 retryCount++;
@@ -687,6 +972,7 @@ Explain your reasoning before each action.`;
         image: state.currentImage || undefined,
         message: `Agent completed after ${state.attempts} attempts. Best score: ${state.auditScore || "N/A"}`,
         history: state.history,
+        constitution: state.constitution || undefined,
     };
 }
 

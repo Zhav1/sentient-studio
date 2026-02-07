@@ -173,6 +173,7 @@ export interface AgentState {
     attempts: number;
     maxAttempts: number;
     history: AgentAction[];
+    canvasElements?: CanvasElement[]; // Original elements with image data for multimodal analysis
 }
 
 /**

@@ -37,6 +37,15 @@ export async function POST(request: NextRequest) {
             await writer.write(encoder.encode(message));
         };
 
+        // Keep-alive heartbeat (send every 5s for Vercel Hobby plan compatibility)
+        const heartbeat = setInterval(async () => {
+            try {
+                await writer.write(encoder.encode(": keep-alive\n\n"));
+            } catch {
+                clearInterval(heartbeat);
+            }
+        }, 5000);
+
         // Run agent in background
         (async () => {
             try {
@@ -69,6 +78,7 @@ export async function POST(request: NextRequest) {
                     message: result.message,
                     hasImage: !!result.image,
                     image: result.image, // Base64 image data
+                    constitution: result.constitution,
                     historyLength: result.history.length,
                 });
             } catch (error) {
@@ -77,6 +87,7 @@ export async function POST(request: NextRequest) {
                     message: error instanceof Error ? error.message : "Unknown error",
                 });
             } finally {
+                clearInterval(heartbeat);
                 await writer.close();
             }
         })();

@@ -33,6 +33,13 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // DEBUG: Log incoming elements
+        console.log(`[/api/analyze] Received ${elements.length} elements`);
+        elements.forEach((el, i) => {
+            const urlPreview = el.url ? (el.url.startsWith('data:') ? `data:${el.url.slice(5, 30)}...` : el.url.slice(0, 50)) : 'NO URL';
+            console.log(`  [${i}] type=${el.type}, hash=${el.hash?.slice(0, 8) || 'none'}, url=${urlPreview}`);
+        });
+
         // Deduplication: Filter out already-processed elements
         const newElements = elements.filter(
             (el) => el.hash && !processedHashes.includes(el.hash)

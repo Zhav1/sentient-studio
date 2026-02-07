@@ -3,10 +3,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useCanvasStore } from "@/lib/store";
-import { getConstitution, saveConstitution } from "@/lib/firebase/firestore";
+import { useCanvasStore } from "@/lib/store/canvasStore";
+import { getConstitution, saveConstitution, addCanvasElement } from "@/lib/firebase/firestore";
 import type { AgentAction } from "@/lib/ai/tools";
 import { EditableCanvas } from "@/components/editor";
+import { createCanvasElement } from "@/lib/types";
 
 interface AgentEvent {
     type: "start" | "action" | "complete" | "error";
@@ -24,7 +25,7 @@ interface AgentEvent {
 }
 
 export default function DashboardPage() {
-    const { constitution, setConstitution, elements, currentBrand } = useCanvasStore();
+    const { constitution, setConstitution, elements, addElement, currentBrand } = useCanvasStore();
 
     const [prompt, setPrompt] = useState("");
     const [isRunning, setIsRunning] = useState(false);
@@ -121,11 +122,33 @@ export default function DashboardPage() {
                                 }]);
                             }
 
-                            if (currentEvent === "complete" && data.image) {
-                                setFinalImage(data.image);
-                                // Save constitution to Firestore for memory
-                                if (currentBrand?.id && data.constitution) {
-                                    saveConstitution(currentBrand.id, data.constitution).catch(console.error);
+                            if (currentEvent === "complete") {
+                                if (data.image) {
+                                    setFinalImage(data.image);
+
+                                    // Create a new canvas element for the moodboard
+                                    const newElement = createCanvasElement("image", {
+                                        url: `data:image/png;base64,${data.image}`,
+                                        name: `Agent Generation: ${prompt.slice(0, 20)}...`,
+                                        x: Math.random() * 300,
+                                        y: Math.random() * 300,
+                                    });
+
+                                    // Update local store
+                                    addElement(newElement);
+
+                                    // Persist to Firestore if brand is active
+                                    if (currentBrand?.id) {
+                                        addCanvasElement(currentBrand.id, newElement).catch(console.error);
+                                    }
+                                }
+
+                                // Update constitution in store and Firestore
+                                if (data.constitution) {
+                                    setConstitution(data.constitution);
+                                    if (currentBrand?.id) {
+                                        saveConstitution(currentBrand.id, data.constitution).catch(console.error);
+                                    }
                                 }
                             }
                         } catch {
