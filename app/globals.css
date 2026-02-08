@@ -3,32 +3,43 @@
 @tailwind utilities;
 
 :root {
-  /* Dark theme by default - Cyberpunk aesthetic */
-  --background: 222 47% 5%;
-  --foreground: 210 40% 98%;
+  /* WORLD CLASS PALETTE: "Midnight Neon" */
+  /* Base: Deep Slate/Blue (Linear-style but darker) */
+  --background: 222 47% 4%;    /* #050b14 */
+  --foreground: 210 40% 98%;   /* #f8fafc */
 
-  --card: 222 47% 8%;
+  --card: 222 47% 6%;          /* #080f1a - Slightly lighter than bg */
   --card-foreground: 210 40% 98%;
 
-  --primary: 174 100% 50%;
-  --primary-foreground: 222 47% 5%;
+  --popover: 222 47% 6%;
+  --popover-foreground: 210 40% 98%;
 
-  --secondary: 217 33% 17%;
+  /* Primary: Vivid Cyan (The "Sentient" Glow) */
+  --primary: 180 100% 50%;     /* #00FFFF */
+  --primary-foreground: 222 47% 4%;
+
+  /* Secondary: Muted Blue-Grey */
+  --secondary: 217 33% 15%;
   --secondary-foreground: 210 40% 98%;
 
-  --muted: 217 33% 17%;
-  --muted-foreground: 215 20% 65%;
+  /* Muted: Subtle separators */
+  --muted: 217 33% 10%;
+  --muted-foreground: 215 20% 60%;
 
+  /* Accent: Hot Magenta (for gradients) */
   --accent: 300 100% 50%;
   --accent-foreground: 210 40% 98%;
 
-  --destructive: 0 84% 60%;
+  /* Destructive: Neon Red */
+  --destructive: 0 100% 60%;
   --destructive-foreground: 210 40% 98%;
 
-  --border: 217 33% 17%;
-  --ring: 174 100% 50%;
+  /* Border & Input: Glass-like */
+  --border: 217 33% 12%;
+  --input: 217 33% 15%;
+  --ring: 180 100% 50%;
 
-  --radius: 0.75rem;
+  --radius: 0.75rem; /* 12px for modern feel */
 }
 
 * {
@@ -113,7 +124,30 @@ body {
   }
 
   .animate-in {
-    animation: fade-in 0.3s ease-out, slide-up 0.4s ease-out;
+    animation: fade-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), slide-up 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* Magic UI Animations */
+  @keyframes border-beam {
+    100% { offset-distance: 100%; }
+  }
+  
+  @keyframes shimmer {
+    from { background-position: 0 0; }
+    to { background-position: -200% 0; }
+  }
+
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(calc(-100% - var(--gap))); }
+  }
+
+  .animate-border-beam {
+    animation: border-beam calc(var(--duration)*1s) infinite linear;
+  }
+
+  .animate-shimmer {
+    animation: shimmer 2s linear infinite;
   }
 }
 

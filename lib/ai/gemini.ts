@@ -521,6 +521,7 @@ You MUST respond with this EXACT JSON structure:
 {
   "visual_identity": {
     "color_palette_hex": ["#XXXXXX", "#XXXXXX", ...],
+    "style_description": "A concise 1-sentence summary of the core vibe (e.g. 'Cyber-noir aesthetic with neon accents')",
     "photography_style": "detailed 50+ word description...",
     "forbidden_elements": ["element1", "element2", ...]
   },
@@ -639,6 +640,12 @@ function validateAndSanitizeConstitution(data: any): BrandConstitution {
         data.photography_style ||
         defaultConst.visual_identity.photography_style;
 
+    // Handle style description - fallback to photography style if missing
+    const styleDescription = 
+        data.visual_identity?.style_description ||
+        data.style_description ||
+        photographyStyle.split('.')[0] + '.'; // Use first sentence of photography style as fallback
+
     // Handle forbidden elements - can be at root or nested
     let forbiddenElements: string[];
     if (Array.isArray(data.visual_identity?.forbidden_elements)) {
@@ -684,6 +691,7 @@ function validateAndSanitizeConstitution(data: any): BrandConstitution {
         visual_identity: {
             color_palette_hex: colorPalette,
             photography_style: photographyStyle,
+            style_description: styleDescription,
             forbidden_elements: forbiddenElements,
         },
         voice: {
@@ -1142,6 +1150,7 @@ function getDefaultConstitution(): BrandConstitution {
         visual_identity: {
             color_palette_hex: ["#00FFCC", "#FF00FF", "#000000"],
             photography_style: "Modern, bold, high contrast",
+            style_description: "Modern, bold, high contrast",
             forbidden_elements: [],
         },
         voice: {

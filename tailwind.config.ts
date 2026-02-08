@@ -52,6 +52,10 @@ export default {
                 "pulse-glow": "pulse-glow 2s ease-in-out infinite",
                 "fade-in": "fade-in 0.3s ease-out",
                 "slide-up": "slide-up 0.4s ease-out",
+                "border-beam": "border-beam calc(var(--duration)*1s) infinite linear",
+                "shimmer": "shimmer 2s linear infinite",
+                "marquee": "marquee var(--duration) linear infinite",
+                "marquee-vertical": "marquee-vertical var(--duration) linear infinite",
             },
             keyframes: {
                 "pulse-glow": {
@@ -65,6 +69,21 @@ export default {
                 "slide-up": {
                     "0%": { opacity: "0", transform: "translateY(10px)" },
                     "100%": { opacity: "1", transform: "translateY(0)" },
+                },
+                "border-beam": {
+                    "100%": { "offset-distance": "100%" },
+                },
+                "shimmer": {
+                    "from": { "backgroundPosition": "0 0" },
+                    "to": { "backgroundPosition": "-200% 0" },
+                },
+                "marquee": {
+                    "from": { transform: "translateX(0)" },
+                    "to": { transform: "translateX(calc(-100% - var(--gap)))" },
+                },
+                "marquee-vertical": {
+                    "from": { transform: "translateY(0)" },
+                    "to": { transform: "translateY(calc(-100% - var(--gap)))" },
                 },
             },
             backdropBlur: {

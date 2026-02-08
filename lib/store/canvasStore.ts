@@ -7,6 +7,9 @@ interface CanvasState {
 
     // Canvas elements (local state)
     elements: CanvasElement[];
+    
+    // Selection state
+    selectedElementId: string | null;
 
     // AI-generated constitution
     constitution: BrandConstitution | null;
@@ -24,6 +27,8 @@ interface CanvasState {
     addElement: (element: CanvasElement) => void;
     removeElement: (id: string) => void;
     updateElementPosition: (id: string, x: number, y: number) => void;
+    updateElement: (id: string, updates: Partial<CanvasElement>) => void;
+    selectElement: (id: string | null) => void;
     setConstitution: (constitution: BrandConstitution | null) => void;
     setIsAnalyzing: (analyzing: boolean) => void;
     setIsSaving: (saving: boolean) => void;
@@ -34,6 +39,7 @@ interface CanvasState {
 const initialState = {
     currentBrand: null,
     elements: [],
+    selectedElementId: null,
     constitution: null,
     isAnalyzing: false,
     isSaving: false,
@@ -48,6 +54,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
             currentBrand: brand,
             elements: brand?.canvas_elements ?? [],
             constitution: brand?.constitution_cache ?? null,
+            selectedElementId: null,
         }),
 
     setElements: (elements) => set({ elements }),
@@ -55,11 +62,13 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     addElement: (element) =>
         set((state) => ({
             elements: [...state.elements, element],
+            selectedElementId: element.id,
         })),
 
     removeElement: (id) =>
         set((state) => ({
             elements: state.elements.filter((el) => el.id !== id),
+            selectedElementId: state.selectedElementId === id ? null : state.selectedElementId,
         })),
 
     updateElementPosition: (id, x, y) =>
@@ -68,6 +77,15 @@ export const useCanvasStore = create<CanvasState>((set) => ({
                 el.id === id ? { ...el, x, y } : el
             ),
         })),
+
+    updateElement: (id, updates) =>
+        set((state) => ({
+            elements: state.elements.map((el) =>
+                el.id === id ? { ...el, ...updates } : el
+            ),
+        })),
+
+    selectElement: (id) => set({ selectedElementId: id }),
 
     setConstitution: (constitution) => set({ constitution }),
 

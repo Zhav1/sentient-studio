@@ -1,138 +1,399 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useCanvasStore } from "@/lib/store/canvasStore";
+import { CanvasBoard } from "@/components/canvas/CanvasBoard";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+    Trash2,
+    Plus,
+    Type,
+    Image as ImageIcon,
+    Palette,
+    Brain,
+    Loader2,
+    LayoutTemplate,
+} from "lucide-react";
+import { createCanvasElement } from "@/lib/types";
+import {
+    getAllBrands,
+    createBrand,
+    saveConstitution,
+    getConstitution,
+    getBrand,
+} from "@/lib/firebase/firestore";
 import Link from "next/link";
-import { MoodboardCanvas, ConstitutionSidebar } from "@/components/canvas";
-import { useCanvasStore } from "@/lib/store";
-import type { AnalyzeResponse } from "@/app/api/analyze/route";
+import { motion, AnimatePresence } from "framer-motion";
+import ShimmerButton from "@/components/magicui/shimmer-button";
+import type { Brand } from "@/lib/types";
+import { AddImageDialog } from "@/components/canvas/AddImageDialog";
+import { AddColorDialog } from "@/components/canvas/AddColorDialog";
 
 export default function CanvasPage() {
     const {
         elements,
+        addElement,
+        removeElement,
+        selectedElementId,
+        selectElement,
+        setElements,
         constitution,
-        isAnalyzing,
         setConstitution,
-        setIsAnalyzing,
-        setError,
+        currentBrand,
+        setCurrentBrand,
     } = useCanvasStore();
 
-    const [lastAnalyzedHashes, setLastAnalyzedHashes] = useState<string[]>([]);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [constitutionOpen, setConstitutionOpen] = useState(false);
+    const [brands, setBrands] = useState<Brand[]>([]);
+    const [selectedBrandId, setSelectedBrandId] = useState<string>("");
+    const [newBrandName, setNewBrandName] = useState("");
+    const [createDialogOpen, setCreateDialogOpen] = useState(false);
+    const [isImageDialogOpen, setIsImageDialogOpen] = useState(false);
+    const [isColorDialogOpen, setIsColorDialogOpen] = useState(false);
 
-    // Analyze canvas elements
-    const handleAnalyze = useCallback(async () => {
-        if (elements.length === 0) {
-            setError("Add some elements to your canvas first!");
-            return;
+    useEffect(() => {
+        loadBrands();
+    }, []);
+
+    async function loadBrands() {
+        try {
+            const data = await getAllBrands();
+            setBrands(data);
+        } catch (error) {
+            console.error("Failed to load brands:", error);
         }
+    }
+
+    async function handleCreateBrand() {
+        if (!newBrandName.trim()) return;
+        try {
+            // @ts-ignore - ID is auto-generated
+            const newId = await createBrand({ 
+                name: newBrandName, 
+                canvas_elements: [],
+                constitution_cache: null,
+                processed_assets: {},
+                // process_assets is required by type but likely handled in firestore.ts or optional
+            });
+            setNewBrandName("");
+            setCreateDialogOpen(false);
+            loadBrands();
+            handleBrandSelect(newId);
+        } catch (error) {
+            console.error("Failed to create brand:", error);
+        }
+    }
+
+    async function handleBrandSelect(id: string) {
+        setSelectedBrandId(id);
+        
+        try {
+            const brand = await getBrand(id);
+            if (brand) {
+                setCurrentBrand(brand);
+                
+                // Load constitution specifically if needed, though setCurrentBrand handles it
+                if (brand.constitution_cache) {
+                    setConstitution(brand.constitution_cache);
+                }
+                
+                setElements(brand.canvas_elements || []);
+            }
+        } catch (error) {
+            console.error("Failed to select brand:", error);
+        }
+    }
+
+    async function handleAnalyze() {
+        if (elements.length === 0) return;
 
         setIsAnalyzing(true);
-        setError(null);
-
         try {
-            const response = await fetch("/api/analyze", {
+             const response = await fetch("/api/agent/constitution", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    brandId: "demo_brand", // For demo purposes
-                    elements,
-                    processedHashes: lastAnalyzedHashes,
-                }),
+                body: JSON.stringify({ elements }),
             });
 
-            if (!response.ok) {
-                throw new Error("Analysis failed");
-            }
+            if (!response.ok) throw new Error("Analysis failed");
 
-            const data: AnalyzeResponse = await response.json();
-
+            const data = await response.json();
             if (data.constitution) {
                 setConstitution(data.constitution);
-                setLastAnalyzedHashes((prev) => [...prev, ...data.newHashes]);
+                setConstitutionOpen(true);
+                
+                if (currentBrand?.id) {
+                    await saveConstitution(currentBrand.id, data.constitution);
+                }
             }
-
-            if (data.skippedCount > 0) {
-                console.log(
-                    `Skipped ${data.skippedCount} already-processed elements (deduplication)`
-                );
-            }
-        } catch (err) {
-            setError("Failed to analyze canvas. Please try again.");
-            console.error("Analysis error:", err);
+        } catch (error) {
+            console.error("Analysis failed:", error);
         } finally {
             setIsAnalyzing(false);
         }
-    }, [elements, lastAnalyzedHashes, setConstitution, setIsAnalyzing, setError]);
+    }
+
+    // Tools Configuration
+    const tools = [
+        { id: "text", icon: Type, label: "Add Text", action: () => addElement(createCanvasElement("text", { text: "New Text", x: 100, y: 100 })) },
+        { id: "image", icon: ImageIcon, label: "Add Image", action: () => setIsImageDialogOpen(true) },
+        { id: "note", icon: LayoutTemplate, label: "Add Note", action: () => addElement(createCanvasElement("note", { text: "New Note", x: 200, y: 200 })) },
+        { id: "color", icon: Palette, label: "Add Color", action: () => setIsColorDialogOpen(true) },
+    ];
 
     return (
-        <div className="min-h-screen flex flex-col">
-            {/* Header */}
-            <header className="border-b border-border px-6 py-4 flex items-center justify-between glass">
-                <div className="flex items-center gap-4">
-                    <Link href="/" className="text-xl font-bold neon-text">
-                        Sentient Studio
+        <div className="h-screen w-screen overflow-hidden bg-background text-foreground flex flex-col relative group/canvas">
+            
+            {/* ... Background ... */}
+            <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:40px_40px] pointer-events-none" />
+            <div className="absolute inset-0 bg-background/50 pointer-events-none radial-mask" />
+
+            {/* HEADER - Floating Island */}
+            <motion.header 
+                initial={{ y: -50, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                className="absolute top-4 left-0 right-0 z-50 flex justify-center pointer-events-none"
+            >
+                {/* ... Header Content ... */}
+                <div className="glass px-6 py-3 rounded-2xl flex items-center gap-6 shadow-2xl pointer-events-auto border-white/10 backdrop-blur-xl">
+                    <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                        <span className="text-xl">✨</span>
+                        <span className="font-bold tracking-tight hidden md:inline">Sentient Canvas</span>
                     </Link>
-                    <span className="text-muted-foreground">/</span>
-                    <span className="text-muted-foreground">Canvas</span>
+
+                    <div className="h-6 w-px bg-white/10" />
+
+                    {/* Brand Selector */}
+                    <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+                         <div className="flex items-center gap-2">
+                            <select 
+                                value={selectedBrandId}
+                                onChange={(e) => handleBrandSelect(e.target.value)}
+                                className="bg-transparent text-sm font-medium focus:outline-none cursor-pointer max-w-[150px] truncate"
+                            >
+                                <option value="" disabled>Select Brand</option>
+                                {brands.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            </select>
+                            <DialogTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full hover:bg-white/10">
+                                    <Plus className="h-3 w-3" />
+                                </Button>
+                            </DialogTrigger>
+                        </div>
+                         <DialogContent className="glass border-white/10 text-foreground">
+                            <DialogHeader>
+                                <DialogTitle>Create New Brand</DialogTitle>
+                                <DialogDescription>Start a fresh brand identity.</DialogDescription>
+                            </DialogHeader>
+                            <div className="py-4">
+                                <Label htmlFor="name" className="text-right">Name</Label>
+                                <Input
+                                    id="name"
+                                    value={newBrandName}
+                                    onChange={(e) => setNewBrandName(e.target.value)}
+                                    className="col-span-3 bg-black/50 border-white/10 mt-2"
+                                />
+                            </div>
+                            <DialogFooter>
+                                <Button onClick={handleCreateBrand}>Create Brand</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+
+                    <div className="h-6 w-px bg-white/10" />
+                    
+                    {/* Status Indicator */}
+                     <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
+                        <span className={`w-1.5 h-1.5 rounded-full ${currentBrand ? "bg-green-500 shadow-[0_0_5px_#22c55e]" : "bg-yellow-500"}`} />
+                        {currentBrand ? "SYNCED" : "LOCAL"}
+                    </div>
                 </div>
+            </motion.header>
 
-                <div className="flex items-center gap-3">
-                    {/* Analyze Button */}
-                    <button
-                        onClick={handleAnalyze}
-                        disabled={isAnalyzing || elements.length === 0}
-                        className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium
-                       hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed
-                       flex items-center gap-2"
-                    >
-                        {isAnalyzing ? (
-                            <>
-                                <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                <span>Analyzing...</span>
-                            </>
-                        ) : (
-                            <>
-                                <span>🧠</span>
-                                <span>Analyze Canvas</span>
-                            </>
-                        )}
-                    </button>
+            {/* FLOATING TOOLBAR */}
+            <motion.div 
+                initial={{ y: 50, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 glass px-4 py-3 rounded-full flex items-center gap-3 shadow-2xl border-white/10 backdrop-blur-xl hover:scale-105 transition-transform duration-300"
+            >
+                <TooltipProvider delayDuration={0}>
+                    {tools.map((tool) => (
+                        <Tooltip key={tool.id}>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={tool.action}
+                                    className="rounded-full hover:bg-white/10 hover:text-primary transition-all active:scale-95"
+                                >
+                                    <tool.icon className="h-5 w-5" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="bg-black/90 text-white border-white/10">
+                                <p>{tool.label}</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    ))}
+                    
+                    <div className="h-8 w-px bg-white/10 mx-2" />
+                    
+                    {selectedElementId && (
+                         <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="destructive"
+                                    size="icon"
+                                    onClick={() => removeElement(selectedElementId)}
+                                    className="rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-400"
+                                >
+                                    <Trash2 className="h-5 w-5" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="bg-red-900 border-red-500/50">
+                                <p>Delete Selected</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    )}
 
-                    {/* Dashboard Link */}
-                    <Link
-                        href="/dashboard"
-                        className="px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all flex items-center gap-2"
-                    >
-                        <span>📊</span>
-                        <span>Dashboard</span>
-                    </Link>
+                    <Tooltip>
+                         <TooltipTrigger asChild>
+                             <div className="ml-2">
+                                <ShimmerButton 
+                                    onClick={handleAnalyze} 
+                                    className="h-10 px-6 rounded-full"
+                                    disabled={elements.length === 0 || isAnalyzing}
+                                    shimmerColor={isAnalyzing ? "#ff00ff" : "#ffffff"}
+                                >
+                                    {isAnalyzing ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <div className="flex items-center gap-2">
+                                            <Brain className="h-4 w-4" />
+                                            <span>Analyze</span>
+                                        </div>
+                                    )}
+                                </ShimmerButton>
+                             </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                            <p>Generate Constitution</p>
+                        </TooltipContent>
+                    </Tooltip>
+
+                </TooltipProvider>
+            </motion.div>
+
+            {/* MAIN CANVAS AREA */}
+            <div 
+                className="flex-1 relative cursor-crosshair active:cursor-grabbing"
+                onClick={() => selectElement(null)} 
+            >
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+                     <span className="text-[10rem] font-bold text-white/5 select-none user-select-none">
+                        SENTIENT
+                     </span>
                 </div>
-            </header>
-
-            {/* Main Content */}
-            <div className="flex-1 flex">
-                {/* Canvas Area */}
-                <MoodboardCanvas />
-
-                {/* Constitution Sidebar */}
-                <ConstitutionSidebar />
+                
+                <CanvasBoard /> 
             </div>
 
-            {/* Status Bar */}
-            <footer className="border-t border-border px-6 py-2 flex items-center justify-between text-sm text-muted-foreground">
-                <div className="flex items-center gap-4">
-                    <span>
-                        {elements.length} element{elements.length !== 1 ? "s" : ""} on canvas
-                    </span>
-                    {constitution && (
-                        <span className="text-primary">✓ Constitution generated</span>
-                    )}
-                </div>
-                <div>
-                    {lastAnalyzedHashes.length > 0 && (
-                        <span>{lastAnalyzedHashes.length} hashes cached</span>
-                    )}
-                </div>
-            </footer>
+            {/* CONSTITUTION DRAWER */}
+            <AnimatePresence>
+                {constitutionOpen && constitution && (
+                    <motion.div
+                        initial={{ x: "100%" }}
+                        animate={{ x: 0 }}
+                        exit={{ x: "100%" }}
+                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                        className="absolute top-0 right-0 w-[400px] h-full z-40 glass border-l border-white/10 shadow-2xl overflow-y-auto"
+                    >
+                        {/* ... Drawer Content ... */}
+                        <div className="p-6 space-y-6">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-xl font-bold flex items-center gap-2 neon-text">
+                                    <span className="text-2xl">📜</span> Constitution
+                                </h2>
+                                <Button variant="ghost" size="icon" onClick={() => setConstitutionOpen(false)}>
+                                    <Trash2 className="h-4 w-4 rotate-45" /> 
+                                </Button>
+                            </div>
+
+                            <div className="space-y-6">
+                                {/* Vibe Section */}
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-mono text-muted-foreground uppercase">Core Vibe</Label>
+                                    <div className="p-3 bg-black/40 rounded-lg border border-white/5 text-sm italic">
+                                        "{constitution.visual_identity.style_description}"
+                                    </div>
+                                </div>
+
+                                {/* Colors */}
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-mono text-muted-foreground uppercase">Palette</Label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {constitution.visual_identity.color_palette_hex.map((color: string, i: number) => (
+                                            <div key={i} className="group relative">
+                                                <div 
+                                                    className="w-10 h-10 rounded-full border border-white/20 shadow-lg transition-transform hover:scale-110 cursor-pointer"
+                                                    style={{ backgroundColor: color }}
+                                                    onClick={() => navigator.clipboard.writeText(color)}
+                                                />
+                                                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] font-mono opacity-0 group-hover:opacity-100 transition-opacity bg-black px-1 rounded">
+                                                    {color}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                
+                                {/* Keywords */}
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-mono text-muted-foreground uppercase">Keywords</Label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {constitution.voice.keywords.map((word: string, i: number) => (
+                                            <span key={i} className="px-2 py-1 rounded-md bg-white/5 text-xs text-white/80 border border-white/5">
+                                                #{word}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* NEW ACTIONS DIALOGS */}
+            <AddImageDialog 
+                open={isImageDialogOpen} 
+                onOpenChange={setIsImageDialogOpen} 
+                onAddImage={(url) => addElement(createCanvasElement("image", { url, x: 150, y: 150 }))} 
+            />
+            <AddColorDialog 
+                open={isColorDialogOpen} 
+                onOpenChange={setIsColorDialogOpen} 
+                onAddColor={(color) => addElement(createCanvasElement("color", { color, x: 250, y: 250 }))} 
+            />
+
         </div>
     );
 }

@@ -6,6 +6,7 @@ export interface BrandConstitution {
     visual_identity: {
         color_palette_hex: string[];
         photography_style: string;
+        style_description: string;
         forbidden_elements: string[];
     };
     voice: {
@@ -21,7 +22,7 @@ export interface BrandConstitution {
 /**
  * Canvas element types for the moodboard
  */
-export type CanvasElementType = "image" | "note" | "color";
+export type CanvasElementType = "image" | "note" | "color" | "text";
 
 /**
  * Individual element on the brand canvas
