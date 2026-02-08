@@ -40,9 +40,9 @@ function getThinkingLevel(operation: string): ThinkingLevel {
         // Compliance requires careful evaluation
         case "audit_compliance":
             return "medium";
-        // Agent orchestration needs smart decisions
+        // Agent orchestration - speed priority, decisions are straightforward
         case "agent_loop":
-            return "medium";
+            return "low";
         // Creative/simple operations - speed priority
         case "generate_image":
         case "search_trends":
@@ -120,6 +120,44 @@ export async function searchWebForContext(query: string): Promise<string> {
     } catch (error) {
         console.error("Search error:", error);
         return "";
+    }
+}
+
+/**
+ * Summarize function response for Gemini - strip large base64 data
+ * The model doesn't need the actual image bytes, just success/failure info
+ */
+function summarizeFunctionResponse(toolName: string, result: object): object {
+    const obj = result as Record<string, unknown>;
+
+    switch (toolName) {
+        case "generate_image":
+            // Don't send image data back - just success status
+            return {
+                success: obj.success,
+                image_generated: obj.image_generated || obj.success,
+                error: obj.error,
+            };
+        case "audit_compliance":
+            // Keep audit results but strip any image data
+            return {
+                compliance_score: obj.compliance_score,
+                pass: obj.pass,
+                fix_instructions: obj.fix_instructions,
+                issue_count: Array.isArray(obj.heatmap_coordinates) ? obj.heatmap_coordinates.length : 0,
+            };
+        case "analyze_canvas":
+            // Keep constitution but it's already small
+            return result;
+        case "complete_task":
+            // Strip final_image from response
+            return {
+                success: obj.success,
+                message: obj.message,
+            };
+        default:
+            // For other tools, return as-is
+            return result;
     }
 }
 
@@ -227,19 +265,23 @@ export async function executeTool(
             }
 
             const auditResult = await auditImageCompliance(imageBase64, constitution);
+            const passes = auditResult.pass || auditResult.compliance_score >= 90;
 
+            // If audit passes, signal that we should auto-complete
             return {
                 result: {
                     success: true,
                     compliance_score: auditResult.compliance_score,
-                    pass: auditResult.pass,
+                    pass: passes,
                     issues: (auditResult.heatmap_coordinates || []).map((h) => h.issue),
                     fix_instructions: auditResult.fix_instructions,
+                    // Signal to agent: if pass is true, call complete_task immediately
+                    next_action: passes ? "CALL complete_task NOW - image passed audit!" : "refine and retry",
                 },
                 state: {
                     ...state,
                     auditScore: auditResult.compliance_score,
-                    phase: "auditing",
+                    phase: passes ? "complete" : "auditing",
                 },
             };
         }
@@ -271,11 +313,19 @@ export async function executeTool(
         }
 
         case "complete_task": {
+            // Debug log what the model passed
+            console.log(`[complete_task] args.final_image_base64 type=${typeof args.final_image_base64}, length=${(args.final_image_base64 as string)?.length || 0}`);
+            console.log(`[complete_task] state.currentImage length=${state.currentImage?.length || 0}`);
+
+            // ALWAYS use state.currentImage - the model sometimes passes placeholder text like "input_file_1.png"
+            const finalImage = state.currentImage || null;
+            console.log(`[complete_task] Using finalImage length=${finalImage?.length || 0}`);
+
             return {
                 result: {
                     success: args.success,
                     message: args.message,
-                    final_image: (args.final_image_base64 as string) || (args.success ? state.currentImage : null),
+                    final_image: finalImage,
                 },
                 state: { ...state, phase: "complete" },
             };
@@ -358,12 +408,35 @@ export async function generateImageWithNanoBanana(
         const response = await model.generateContent(enhancedPrompt, { timeout: 600000 });
         const parts = response.response.candidates?.[0]?.content?.parts || [];
 
-        for (const part of parts) {
-            if (part.inlineData?.mimeType?.startsWith("image/")) {
-                return part.inlineData.data; // Base64 encoded image
+        // Debug logging
+        console.log(`[NanoBanana] Response has ${parts.length} parts`);
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            if (part.inlineData) {
+                console.log(`[NanoBanana] Part ${i}: inlineData mimeType=${part.inlineData.mimeType}, dataLength=${part.inlineData.data?.length || 0}`);
+            } else if (part.text) {
+                console.log(`[NanoBanana] Part ${i}: text (${part.text.length} chars)`);
+            } else {
+                console.log(`[NanoBanana] Part ${i}: unknown type`, Object.keys(part));
             }
         }
 
+        for (const part of parts) {
+            if (part.inlineData?.mimeType?.startsWith("image/")) {
+                const base64Data = part.inlineData.data;
+                if (base64Data && base64Data.length > 100) {
+                    console.log(`[NanoBanana] SUCCESS: Returning image data (${base64Data.length} chars)`);
+                    return base64Data; // Base64 encoded image
+                }
+            }
+        }
+
+        // If we got here, no valid image in response - log the full parts for debugging
+        console.error("[NanoBanana] No valid image in response. Parts:", JSON.stringify(parts.map(p => ({
+            hasInlineData: !!p.inlineData,
+            inlineDataMime: p.inlineData?.mimeType,
+            textLength: p.text?.length,
+        }))));
         throw new Error("No image generated in response");
     } catch (error) {
         console.error("Nano Banana generation error:", error);
@@ -815,14 +888,13 @@ export async function runAgentLoop(
             },
         },
         generationConfig: {
-            // @ts-expect-error - thinking config for agent loop
+            // @ts-expect-error - thinking config for Gemini 3 (docs only show includeThoughts, not thinkingLevel)
             thinkingConfig: {
                 includeThoughts: true,
-                thinkingLevel: getThinkingLevel("agent_loop"), // Dynamic - uses "medium"
             },
             temperature: 1.0,
         },
-    }, { timeout: 60000 }); // 60s per call for faster feedback
+    }, { timeout: 120000 }); // 120s per call (image generation can take 30-60s)
 
     // Initialize agent state with memory and original canvas elements
     let state: AgentState = {
@@ -842,40 +914,83 @@ export async function runAgentLoop(
         ? `\n\nMEMORY: You have a saved Brand Constitution from a previous session:\n${JSON.stringify(savedConstitution, null, 2)}\nYou may skip analyze_canvas if this constitution is still relevant.`
         : "";
 
+    // Create a lightweight summary of canvas elements (NO base64 data - that causes timeouts!)
+    const elementsSummary = canvasElements.map(el => ({
+        id: el.id,
+        type: el.type,
+        name: el.name || `${el.type} element`,
+        // For images, just note that it exists - actual data is passed to analyze_canvas
+        hasImage: el.type === 'image' && !!el.url,
+        // For notes and colors, include the actual values
+        text: el.type === 'note' ? el.text : undefined,
+        color: el.type === 'color' ? el.color : undefined,
+    }));
+
     const systemMessage = `You are an autonomous marketing asset generator agent.
 
 USER REQUEST: "${userPrompt}"
 
-AVAILABLE CANVAS ELEMENTS (LONG CONTEXT):
-${JSON.stringify(canvasElements, null, 2)}
+CANVAS ELEMENTS AVAILABLE (${canvasElements.length} items):
+${JSON.stringify(elementsSummary, null, 2)}
+
+NOTE: Image data is stored separately and will be analyzed when you call analyze_canvas.
 ${memoryContext}
 
 YOUR GOAL:
-1. First, call analyze_canvas to understand the brand (OR use saved constitution if available)
-2. Optionally call search_trends for current design trends
-3. Then, call generate_image with a prompt based on the brand constitution
-4. Call audit_compliance to check the generated image
-5. If audit fails (score < 90), call refine_prompt and generate_image again
+${savedConstitution ? `IMPORTANT: You already have a SAVED Brand Constitution (shown above in MEMORY). SKIP analyze_canvas and proceed directly to step 3.` : `1. First, call analyze_canvas to understand the brand from the moodboard images.`}
+2. Optionally call search_trends for current design trends (recommended for better results).
+3. Call generate_image with a detailed prompt based on the brand constitution.
+4. Call audit_compliance to check the generated image against brand guidelines.
+5. If audit fails (score < 90), call refine_prompt and generate_image again.
 6. Maximum 3 attempts. After that, complete with best result.
-7. When done, call complete_task
+7. When done, call complete_task.
 
 Think step by step. Execute one action at a time.
 Explain your reasoning before each action.`;
 
+    // Debug: Log system message size to diagnose bad request issues
+    console.log(`[Agent Init] System message size: ${systemMessage.length} chars`);
+    console.log(`[Agent Init] Elements summary: ${JSON.stringify(elementsSummary).length} chars for ${canvasElements.length} elements`);
+    if (savedConstitution) {
+        console.log(`[Agent Init] Constitution size: ${JSON.stringify(savedConstitution).length} chars`);
+    }
+
     const chat = model.startChat();
 
-    // Initial message with retry for robustness
+    // Initial message with exponential backoff and jitter for robustness
     let response;
     let initialRetry = 0;
-    while (initialRetry <= 2) {
+    const maxInitRetries = 3;
+
+    while (initialRetry <= maxInitRetries) {
         try {
-            response = await chat.sendMessage(systemMessage, { timeout: 60000 });
+            console.log(`[Agent Init] Attempt ${initialRetry + 1}/${maxInitRetries + 1}...`);
+            response = await chat.sendMessage(systemMessage, { timeout: 90000 }); // 90s for init
+            console.log(`[Agent Init] Success on attempt ${initialRetry + 1}`);
             break;
         } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            const is500Error = errorMsg.includes("500") || errorMsg.includes("Internal");
+            const isTimeout = errorMsg.includes("aborted") || errorMsg.includes("timeout");
+
             initialRetry++;
-            if (initialRetry > 2) throw new Error(`Agent initialization failed after 3 attempts: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            console.warn(`Agent init failed, retrying (${initialRetry}/2)...`);
-            await new Promise(resolve => setTimeout(resolve, 1000 * initialRetry));
+            console.error(`[Agent Init] Attempt ${initialRetry} failed: ${errorMsg}`);
+
+            if (initialRetry > maxInitRetries) {
+                // Final failure - provide actionable error message
+                if (is500Error) {
+                    throw new Error(`Gemini API server error (500). The AI service is experiencing issues. Please try again in a few seconds.`);
+                } else if (isTimeout) {
+                    throw new Error(`Request timeout. The AI service is slow. Please try again.`);
+                } else {
+                    throw new Error(`Agent initialization failed: ${errorMsg}`);
+                }
+            }
+
+            // Exponential backoff with jitter (2s, 4s, 8s base + random 0-1s)
+            const backoffMs = Math.pow(2, initialRetry) * 1000 + Math.random() * 1000;
+            console.log(`[Agent Init] Retrying in ${Math.round(backoffMs)}ms...`);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
         }
     }
 
@@ -929,11 +1044,13 @@ Explain your reasoning before each action.`;
             state.history.push(action);
             onAction(action);
 
-            // Build function response
+            // Build function response - SUMMARIZE to avoid sending large base64 data back to Gemini
+            // The model only needs to know success/failure, not the actual image bytes
+            const summarizedResult = summarizeFunctionResponse(fc.name, result as object);
             functionResponses.push({
                 functionResponse: {
                     name: fc.name,
-                    response: result as object,
+                    response: summarizedResult,
                 },
             });
 
@@ -950,19 +1067,61 @@ Explain your reasoning before each action.`;
             }
         }
 
-        // Send function results back to model with retry for robustness
+        // Send function results back to model
+        // IMPORTANT: Using original chat.sendMessage() to preserve thought_signature
+        // Gemini 3 with thinkingConfig requires thought signatures in function call history
+        // Fresh chat approach breaks this - signatures must be preserved across turns
         let retryCount = 0;
         const maxRetries = 2;
+        let apiCallSucceeded = false;
+
         while (retryCount <= maxRetries) {
             try {
-                response = await chat.sendMessage(functionResponses, { timeout: 60000 }); // 60s per call
+                // Debug: log payload size to diagnose timeouts
+                const payloadSize = JSON.stringify(functionResponses).length;
+                console.log(`[Agent Loop] Sending ${functionResponses.length} responses, payload size: ${payloadSize} bytes, step: ${state.step}`);
+
+                // Use the original chat which preserves thought_signature in history
+                response = await chat.sendMessage(functionResponses, { timeout: 120000 }); // 120s timeout for accumulated history
+                apiCallSucceeded = true;
                 break; // Success
             } catch (error) {
                 retryCount++;
-                if (retryCount > maxRetries) throw error;
-                console.warn(`Agent fetch failed, retrying (${retryCount}/${maxRetries})...`);
-                await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                console.warn(`Agent API call failed (${retryCount}/${maxRetries}): ${errorMsg}`);
+
+                if (retryCount > maxRetries) {
+                    // GRACEFUL DEGRADATION: If we have an image, return it instead of failing
+                    if (state.currentImage && state.currentImage.length > 1000) {
+                        console.log(`[Graceful Degradation] Returning image despite API failure. Image size: ${state.currentImage.length}`);
+                        return {
+                            success: true,
+                            image: state.currentImage,
+                            message: `Generated image successfully! (Agent flow interrupted but image was created)`,
+                            history: state.history,
+                            constitution: state.constitution || undefined,
+                        };
+                    }
+                    // No image available, rethrow the error
+                    throw error;
+                }
+                // Exponential backoff with jitter (2s, 4s base + random 0-1s)
+                const backoffMs = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
+                console.log(`[Agent Loop] Retrying in ${Math.round(backoffMs)}ms...`);
+                await new Promise(resolve => setTimeout(resolve, backoffMs));
             }
+        }
+
+        // If API call failed but we didn't return/throw, something is wrong - safeguard
+        if (!apiCallSucceeded && state.currentImage) {
+            console.log(`[Safeguard] API call failed but image exists. Returning image.`);
+            return {
+                success: true,
+                image: state.currentImage,
+                message: `Image generated successfully!`,
+                history: state.history,
+                constitution: state.constitution || undefined,
+            };
         }
     }
 

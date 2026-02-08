@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { runAgentLoop } from "@/lib/ai/gemini";
 import type { AgentAction } from "@/lib/ai/tools";
 import type { CanvasElement, BrandConstitution } from "@/lib/types";
+import { storeImage } from "@/lib/imageStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,12 +73,22 @@ export async function POST(request: NextRequest) {
                     savedConstitution
                 );
 
-                // Send final result
+                // Debug log the result
+                console.log(`[Agent Complete] success=${result.success}, hasImage=${!!result.image}, imageLength=${result.image?.length || 0}`);
+
+                // Store large image in memory and send ID instead (SSE can't handle 1MB+ payloads)
+                let imageId: string | null = null;
+                if (result.image) {
+                    imageId = storeImage(result.image);
+                    console.log(`[Agent Complete] Stored image as ${imageId}`);
+                }
+
+                // Send final result with imageId (not the full base64)
                 await sendEvent("complete", {
                     success: result.success,
                     message: result.message,
                     hasImage: !!result.image,
-                    image: result.image, // Base64 image data
+                    imageId, // Client will fetch /api/image/[id] to get the actual image
                     constitution: result.constitution,
                     historyLength: result.history.length,
                 });

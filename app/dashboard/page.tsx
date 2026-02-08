@@ -123,24 +123,44 @@ export default function DashboardPage() {
                             }
 
                             if (currentEvent === "complete") {
-                                if (data.image) {
-                                    setFinalImage(data.image);
+                                console.log("[SSE] Complete event received:", {
+                                    hasImage: data.hasImage,
+                                    imageId: data.imageId,
+                                });
 
-                                    // Create a new canvas element for the moodboard
-                                    const newElement = createCanvasElement("image", {
-                                        url: `data:image/png;base64,${data.image}`,
-                                        name: `Agent Generation: ${prompt.slice(0, 20)}...`,
-                                        x: Math.random() * 300,
-                                        y: Math.random() * 300,
-                                    });
+                                // Fetch the image from the server if we have an imageId
+                                if (data.imageId) {
+                                    console.log("[SSE] Fetching image from /api/image/" + data.imageId);
+                                    try {
+                                        const imgResponse = await fetch(`/api/image/${data.imageId}`);
+                                        const imgData = await imgResponse.json();
+                                        if (imgData.image) {
+                                            console.log("[SSE] Image fetched successfully, length:", imgData.image.length);
+                                            setFinalImage(imgData.image);
 
-                                    // Update local store
-                                    addElement(newElement);
+                                            // Create a new canvas element for the moodboard
+                                            const newElement = createCanvasElement("image", {
+                                                url: `data:image/png;base64,${imgData.image}`,
+                                                name: `Agent Generation: ${prompt.slice(0, 20)}...`,
+                                                x: Math.random() * 300,
+                                                y: Math.random() * 300,
+                                            });
 
-                                    // Persist to Firestore if brand is active
-                                    if (currentBrand?.id) {
-                                        addCanvasElement(currentBrand.id, newElement).catch(console.error);
+                                            // Update local store
+                                            addElement(newElement);
+
+                                            // Persist to Firestore if brand is active
+                                            if (currentBrand?.id) {
+                                                addCanvasElement(currentBrand.id, newElement).catch(console.error);
+                                            }
+                                        } else {
+                                            console.error("[SSE] Image fetch failed:", imgData.error);
+                                        }
+                                    } catch (fetchError) {
+                                        console.error("[SSE] Failed to fetch image:", fetchError);
                                     }
+                                } else if (!data.hasImage) {
+                                    console.log("[SSE] No image generated in this session");
                                 }
 
                                 // Update constitution in store and Firestore

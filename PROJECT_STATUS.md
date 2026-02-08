@@ -126,6 +126,61 @@
 
 ---
 
+## Session Log (2026-02-07 Evening)
+
+### Critical Bug Fixes 🔴
+
+#### Bug #5: SSE Cannot Send 1MB+ Payloads
+
+- **Symptom**: Agent completed successfully, logs showed `[Agent Complete] success=true, hasImage=true`, but frontend received NO complete event.
+- **Root Cause**: Server-Sent Events (SSE) cannot reliably send 1MB+ JSON payloads. The `complete` event with full base64 image (~1.1MB) was silently failing.
+- **Fix**:
+  1. Created `lib/imageStore.ts` to store images separately
+  2. SSE now sends `imageId` (50 bytes) instead of full base64
+  3. Frontend fetches image via `/api/image/[id]` endpoint
+- **Files**: [`imageStore.ts`](file:///d:/College/Gemini%20Hackathon/sentient-studio/lib/imageStore.ts), [`route.ts`](file:///d:/College/Gemini%20Hackathon/sentient-studio/app/api/agent/route.ts), [`page.tsx`](file:///d:/College/Gemini%20Hackathon/sentient-studio/app/dashboard/page.tsx)
+
+#### Bug #6: In-Memory Store Lost Between Server Instances
+
+- **Symptom**: Image stored successfully but GET returned 404: `[ImageStore] Image img_xxx not found`
+- **Root Cause**: Next.js can use different server instances for POST and GET requests. In-memory `Map<>` is isolated per instance.
+- **Fix**: Switched to **file-based cache** using `os.tmpdir()`. Images persist across server instances/hot reloads.
+- **File**: [`imageStore.ts`](file:///d:/College/Gemini%20Hackathon/sentient-studio/lib/imageStore.ts)
+
+#### Bug #7: ThinkingConfig Causing 500 Errors
+
+- **Symptom**: `[500 Internal Server Error]` when thinkingConfig included `thinkingLevel: "low"`
+- **Root Cause**: Gemini 3 docs only show `includeThoughts: true`. The `thinkingLevel` parameter was incorrectly configured.
+- **Fix**: Removed `thinkingLevel`, kept only `includeThoughts: true` per official docs.
+- **File**: [`gemini.ts`](file:///d:/College/Gemini%20Hackathon/sentient-studio/lib/ai/gemini.ts)
+
+#### Bug #8: Thought Signatures Required for Function Calling
+
+- **Symptom**: `[400 Bad Request] Function call is missing a thought_signature`
+- **Root Cause**: When using `thinkingConfig` with function calling, Gemini 3 attaches `thoughtSignature` to function calls. These MUST be preserved in chat history.
+- **Learning**: Fresh chat approach loses thought signatures. Must use accumulated `chat.sendMessage()` to preserve them.
+- **Docs**: <https://ai.google.dev/gemini-api/docs/thought-signatures>
+
+### Architecture Improvements
+
+| Component | Change | Benefit |
+|-----------|--------|---------|
+| SSE Payload | Image ID instead of base64 | Reliable large image delivery |
+| Image Storage | File-based temp cache | Works across server instances |
+| ThinkingConfig | `includeThoughts: true` only | Compatible with function calling |
+| Agent Loop | 120s timeout + retries | Handles long-running operations |
+| Graceful Degradation | Returns image if flow interrupted | Always delivers generated content |
+
+### Files Modified
+
+- `lib/imageStore.ts` - NEW: File-based image cache
+- `app/api/image/[id]/route.ts` - NEW: Image fetch endpoint
+- `app/api/agent/route.ts` - Store image, send ID via SSE
+- `app/dashboard/page.tsx` - Fetch image via API
+- `lib/ai/gemini.ts` - Fixed thinkingConfig, 120s timeout, retries
+
+---
+
 ## Session Log (2026-02-04)
 
 ### Phase 1: Optimizations ✅
