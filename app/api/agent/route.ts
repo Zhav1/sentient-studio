@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
                             input: summarizeInput(action.input),
                             output: summarizeOutput(action.output),
                             thinking: action.thinking || getThinkingMessage(action.tool),
+                            signature: action.thoughtSignature, // Added for continuity tracking
                         });
                     },
                     savedConstitution

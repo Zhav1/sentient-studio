@@ -147,8 +147,8 @@ export default function CanvasPage() {
             const response = await fetch("/api/agent/constitution", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                    elements, 
+                body: JSON.stringify({
+                    elements,
                     settings: canvasSettings // Send the Frame/Aspect Ratio data
                 }),
             });
@@ -181,13 +181,13 @@ export default function CanvasPage() {
 
     return (
         <div className="h-screen w-screen overflow-hidden bg-background text-foreground flex flex-col relative group/canvas">
-            
+
             {/* ... Background ... */}
             <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:40px_40px] pointer-events-none" />
             <div className="absolute inset-0 bg-background/50 pointer-events-none radial-mask" />
 
             {/* HEADER - Floating Island */}
-            <motion.header 
+            <motion.header
                 initial={{ y: -50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 className="absolute top-4 left-0 right-0 z-50 flex justify-center pointer-events-none"
@@ -203,8 +203,8 @@ export default function CanvasPage() {
 
                     {/* Brand Selector */}
                     <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-                         <div className="flex items-center gap-2">
-                            <select 
+                        <div className="flex items-center gap-2">
+                            <select
                                 value={selectedBrandId}
                                 onChange={(e) => handleBrandSelect(e.target.value)}
                                 className="bg-transparent text-sm font-medium focus:outline-none cursor-pointer max-w-[150px] truncate"
@@ -218,7 +218,7 @@ export default function CanvasPage() {
                                 </Button>
                             </DialogTrigger>
                         </div>
-                         <DialogContent className="glass border-white/10 text-foreground">
+                        <DialogContent className="glass border-white/10 text-foreground">
                             <DialogHeader>
                                 <DialogTitle>Create New Brand</DialogTitle>
                                 <DialogDescription>Start a fresh brand identity.</DialogDescription>
@@ -240,8 +240,8 @@ export default function CanvasPage() {
 
                     <div className="h-6 w-px bg-white/10" />
 
-                     {/* Layout Selector */}
-                     <select
+                    {/* Layout Selector */}
+                    <select
                         value={canvasSettings?.preset || 'free'}
                         onChange={(e) => setCanvasSettings({ ...canvasSettings, preset: e.target.value as any, name: e.target.options[e.target.selectedIndex].text })}
                         className="bg-transparent text-sm font-medium focus:outline-none cursor-pointer max-w-[150px] truncate"
@@ -253,9 +253,9 @@ export default function CanvasPage() {
                     </select>
 
                     <div className="h-6 w-px bg-white/10" />
-                    
+
                     {/* Status Indicator */}
-                     <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
+                    <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
                         <span className={`w-1.5 h-1.5 rounded-full ${currentBrand ? "bg-green-500 shadow-[0_0_5px_#22c55e]" : "bg-yellow-500"}`} />
                         {currentBrand ? "SYNCED" : "LOCAL"}
                     </div>
@@ -263,22 +263,22 @@ export default function CanvasPage() {
             </motion.header>
 
             {/* FLOATING TOOLBAR */}
-            <motion.div 
+            <motion.div
                 initial={{ y: 50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.2 }}
                 className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 glass px-4 py-3 rounded-full flex items-center gap-3 shadow-2xl border-white/10 backdrop-blur-xl hover:scale-105 transition-transform duration-300"
             >
-                <TooltipProvider delayDuration={300} disableHoverableContent>
+                <TooltipProvider delayDuration={0}>
                     {tools.map((tool) => (
-                        <Tooltip key={tool.id}>
+                        <Tooltip key={tool.id} disableHoverableContent>
                             <TooltipTrigger asChild>
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    onClick={(e) => { 
+                                    onClick={(e) => {
                                         e.preventDefault();
-                                        tool.action(); 
+                                        tool.action();
                                     }}
                                     className="rounded-full hover:bg-white/10 hover:text-primary transition-all active:scale-95 focus:outline-none focus:ring-0"
                                 >
@@ -290,32 +290,33 @@ export default function CanvasPage() {
                             </TooltipContent>
                         </Tooltip>
                     ))}
-                    
+
                     <div className="h-8 w-px bg-white/10 mx-2" />
-                    
-                     {selectedElementId && (
-                         <Tooltip>
-                            <TooltipTrigger asChild onPointerDown={(e) => e.preventDefault()}>
+
+                    {selectedElementId && (
+                        <Tooltip disableHoverableContent>
+                            <TooltipTrigger asChild>
                                 <Button
                                     variant="destructive"
                                     size="icon"
                                     onClick={() => removeElement(selectedElementId)}
+                                    onPointerDown={(e) => e.preventDefault()}
                                     className="rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-400"
                                 >
                                     <Trash2 className="h-5 w-5" />
                                 </Button>
                             </TooltipTrigger>
-                            <TooltipContent side="top" className="bg-red-900 border-red-500/50">
+                            <TooltipContent side="top" className="bg-red-900 border-red-500/50 text-white font-medium">
                                 <p>Delete Selected</p>
                             </TooltipContent>
                         </Tooltip>
                     )}
 
-                    <Tooltip>
-                         <TooltipTrigger asChild onPointerDown={(e) => e.preventDefault()}>
-                             <div className="ml-2">
-                                <ShimmerButton 
-                                    onClick={handleAnalyze} 
+                    <Tooltip disableHoverableContent>
+                        <TooltipTrigger asChild>
+                            <div className="ml-2" onPointerDown={(e) => e.preventDefault()}>
+                                <ShimmerButton
+                                    onClick={handleAnalyze}
                                     className="h-10 px-6 rounded-full"
                                     disabled={elements.length === 0 || isAnalyzing}
                                     shimmerColor={isAnalyzing ? "#ff00ff" : "#ffffff"}
@@ -329,9 +330,9 @@ export default function CanvasPage() {
                                         </div>
                                     )}
                                 </ShimmerButton>
-                             </div>
+                            </div>
                         </TooltipTrigger>
-                        <TooltipContent side="top">
+                        <TooltipContent side="top" className="bg-black/90 text-white border-white/10">
                             <p>Generate Constitution</p>
                         </TooltipContent>
                     </Tooltip>
@@ -340,17 +341,17 @@ export default function CanvasPage() {
             </motion.div>
 
             {/* MAIN CANVAS AREA */}
-            <div 
+            <div
                 className="flex-1 relative cursor-crosshair active:cursor-grabbing"
-                onClick={() => selectElement(null)} 
+                onClick={() => selectElement(null)}
             >
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
-                     <span className="text-[10rem] font-bold text-white/5 select-none user-select-none">
+                    <span className="text-[10rem] font-bold text-white/5 select-none user-select-none">
                         SENTIENT
-                     </span>
+                    </span>
                 </div>
-                
-                <CanvasBoard /> 
+
+                <CanvasBoard />
             </div>
 
             {/* CONSTITUTION DRAWER */}
@@ -370,7 +371,7 @@ export default function CanvasPage() {
                                     <span className="text-2xl">📜</span> Constitution
                                 </h2>
                                 <Button variant="ghost" size="icon" onClick={() => setConstitutionOpen(false)}>
-                                    <Trash2 className="h-4 w-4 rotate-45" /> 
+                                    <Trash2 className="h-4 w-4 rotate-45" />
                                 </Button>
                             </div>
 
@@ -389,7 +390,7 @@ export default function CanvasPage() {
                                     <div className="flex flex-wrap gap-2">
                                         {constitution.visual_identity.color_palette_hex.map((color: string, i: number) => (
                                             <div key={i} className="group relative">
-                                                <div 
+                                                <div
                                                     className="w-10 h-10 rounded-full border border-white/20 shadow-lg transition-transform hover:scale-110 cursor-pointer"
                                                     style={{ backgroundColor: color }}
                                                     onClick={() => navigator.clipboard.writeText(color)}
@@ -401,7 +402,7 @@ export default function CanvasPage() {
                                         ))}
                                     </div>
                                 </div>
-                                
+
                                 {/* Keywords */}
                                 <div className="space-y-2">
                                     <Label className="text-xs font-mono text-muted-foreground uppercase">Keywords</Label>
@@ -420,15 +421,15 @@ export default function CanvasPage() {
             </AnimatePresence>
 
             {/* NEW ACTIONS DIALOGS */}
-            <AddImageDialog 
-                open={isImageDialogOpen} 
-                onOpenChange={setIsImageDialogOpen} 
-                onAddImage={(url) => addElementToStore(createCanvasElement("image", { url, x: 150, y: 150 }))} 
+            <AddImageDialog
+                open={isImageDialogOpen}
+                onOpenChange={setIsImageDialogOpen}
+                onAddImage={(url) => addElementToStore(createCanvasElement("image", { url, x: 150, y: 150 }))}
             />
-            <AddColorDialog 
-                open={isColorDialogOpen} 
-                onOpenChange={setIsColorDialogOpen} 
-                onAddColor={(color) => addElementToStore(createCanvasElement("color", { color, x: 250, y: 250 }))} 
+            <AddColorDialog
+                open={isColorDialogOpen}
+                onOpenChange={setIsColorDialogOpen}
+                onAddColor={(color) => addElementToStore(createCanvasElement("color", { color, x: 250, y: 250 }))}
             />
 
         </div>

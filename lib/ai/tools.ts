@@ -14,21 +14,13 @@ export const AGENT_TOOLS = [
         parameters: {
             type: "object",
             properties: {
-                canvas_elements: {
-                    type: "array",
-                    description: "List of canvas elements to analyze",
-                    items: {
-                        type: "object",
-                        properties: {
-                            type: { type: "string", enum: ["image", "note", "color"] },
-                            url: { type: "string", description: "URL for images" },
-                            text: { type: "string", description: "Text content for notes" },
-                            color: { type: "string", description: "Hex color for swatches" },
-                        },
-                    },
+                // Simplified: The model doesn't need to pass elements anymore.
+                // It just calls the tool to trigger the multimodal analysis of existing elements.
+                reasoning: {
+                    type: "string",
+                    description: "Step-by-step reasoning for why analysis is being performed."
                 },
             },
-            required: ["canvas_elements"],
         },
     },
     {
@@ -81,12 +73,14 @@ export const AGENT_TOOLS = [
                     type: "string",
                     description: "Base64 encoded image to audit",
                 },
-                constitution: {
-                    type: "object",
-                    description: "Brand constitution to check against",
-                },
+                // Simplified: The model doesn't need to pass the full constitution object.
+                // The tool will use the previously extracted brand DNA from the state.
+                reasoning: {
+                    type: "string",
+                    description: "Why this image needs auditing and what specifically to look for."
+                }
             },
-            required: ["image_base64", "constitution"],
+            required: ["image_base64"],
         },
     },
     {
@@ -185,6 +179,7 @@ export interface AgentAction {
     input: Record<string, unknown>;
     output: unknown;
     thinking?: string;
+    thoughtSignature?: string;
 }
 
 /**

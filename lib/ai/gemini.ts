@@ -34,66 +34,21 @@ type ThinkingLevel = "minimal" | "low" | "medium" | "high";
 
 function getThinkingLevel(operation: string): ThinkingLevel {
     switch (operation) {
-        // Deep reasoning needed - brand identity is critical
+        // Deep reasoning needed - brand identity is critical (Gemini 3 Pro)
         case "analyze_canvas":
-            return "medium";
-        // Compliance requires careful evaluation
+            return "high";
+        // Compliance requires careful evaluation (Gemini 3 Flash)
         case "audit_compliance":
             return "medium";
-        // Agent orchestration - speed priority, decisions are straightforward
+        // Agent orchestration - speed priority, decisions are straightforward (Gemini 3 Flash)
         case "agent_loop":
             return "low";
-        // Creative/simple operations - speed priority
+        // Creative/simple operations - speed priority (Gemini 3 Flash)
         case "generate_image":
         case "search_trends":
         case "refine_prompt":
-            return "low";
-        // Terminal operations - minimal overhead
-        case "complete_task":
-        case "generate_thinking":
-            return "minimal";
         default:
             return "low";
-    }
-}
-
-/**
- * Generate reasoning/thinking for an action (visible AI reasoning)
- */
-export async function generateThinking(
-    context: string,
-    action: string
-): Promise<string> {
-    const client = getGeminiClient();
-    // Use Gemini 3 Flash with thinking config
-    const model = client.getGenerativeModel({
-        model: "gemini-3-flash-preview",
-    });
-
-    const prompt = `You are explaining your thought process as an AI agent.
-
-CONTEXT: ${context}
-ACTION YOU'RE ABOUT TO TAKE: ${action}
-
-Explain your reasoning in 2-3 sentences. Be specific about WHY you chose this action.
-Write in first person ("I noticed...", "I'm choosing to...").`;
-
-    try {
-        const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: {
-                // @ts-expect-error - thinking config is valid in Gemini 3
-                thinkingConfig: {
-                    includeThoughts: true,
-                    thinkingLevel: getThinkingLevel("generate_thinking"),
-                },
-                temperature: 1.0,
-            },
-        }, { timeout: 30000 }); // 30s max for thinking explanation
-        return result.response.text().trim();
-    } catch (error) {
-        console.error("Thinking generation error:", error);
-        return `Executing ${action}...`;
     }
 }
 
@@ -177,16 +132,16 @@ export async function executeTool(
 
     switch (toolName) {
         case "analyze_canvas": {
-            // CRITICAL: Use ORIGINAL elements from state with actual image data,
-            // NOT the model's function call args (which are text-only descriptions)
-            const elements = state.canvasElements || (args.canvas_elements as CanvasElement[]);
+            // CRITICAL: Tools now use ORIGINAL elements from the shared state
+            // to avoid sending large base64 data through model tool call parameters (500 fix).
+            const elements = state.canvasElements;
             if (!elements || elements.length === 0) {
                 return {
-                    result: { success: false, error: "No canvas elements provided" },
+                    result: { success: false, error: "No canvas elements found in state" },
                     state,
                 };
             }
-            console.log(`Analyzing ${elements.length} canvas elements with image data...`);
+            console.log(`Analyzing ${elements.length} canvas elements with internal image data...`);
             const constitution = await analyzeCanvasForConstitution(elements);
             return {
                 result: { success: true, constitution },
@@ -254,12 +209,14 @@ export async function executeTool(
         }
 
         case "audit_compliance": {
-            const imageBase64 = state.currentImage || (args.image_base64 as string);
-            const constitution = state.constitution || (args.constitution as BrandConstitution);
+            // Simplified: Use current image and constitution from internal state
+            // to avoid sending enormous objects via tool-call parameters (500 fix).
+            const imageBase64 = state.currentImage;
+            const constitution = state.constitution;
 
             if (!imageBase64 || !constitution) {
                 return {
-                    result: { success: false, error: "Missing image or constitution" },
+                    result: { success: false, error: "Missing image or brand DNA. Analyze canvas and generate image first." },
                     state,
                 };
             }
@@ -458,14 +415,21 @@ export async function analyzeCanvasForConstitution(
 
     // NOTE: responseSchema does NOT work reliably with multimodal image content
     // It causes Gemini to return nulls. We use responseMimeType for JSON + prompt enforcement.
+    // Use Gemini 3 Pro for high-fidelity brand analysis
     const model = client.getGenerativeModel({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3-pro-preview",
         generationConfig: {
             responseMimeType: "application/json",
-            // responseSchema removed - conflicts with multimodal content
+            // @ts-expect-error - thinking config is valid in Gemini 3
+            thinkingConfig: {
+                includeThoughts: true,
+                thinkingLevel: getThinkingLevel("analyze_canvas"),
+            },
             temperature: 1.0,
+            // @ts-ignore - media_resolution is valid in Gemini 3
+            media_resolution: "medium", // Optimized for speed vs quality
         },
-    }, { timeout: 90000 }); // 90s for image analysis
+    }, { timeout: 120000 }); // 120s for Pro analysis
 
     // Build multimodal content with actual images
     const contentParts: Part[] = [];
@@ -504,38 +468,38 @@ export async function analyzeCanvasForConstitution(
     }
 
     // Build the analysis prompt with explicit schema structure
-    const analysisPrompt = `You are an expert Brand Constitution Architect analyzing a moodboard.
-
-TASK: Analyze the ${imageElements.length} image(s) provided and extract the brand's visual DNA.
-
-${textDescriptions.length > 0 ? `ADDITIONAL CONTEXT:\n${textDescriptions.join("\n")}` : ""}
-
-CRITICAL REQUIREMENTS:
-1. **Color Palette**: Extract the EXACT dominant colors from the images. Look at the actual pixels. For vintage propaganda, expect reds (#CC0000), golds (#D4AF37), blacks (#000000), creams (#F5F5DC), etc.
-2. **Photography Style**: Describe the SPECIFIC visual style you see (not generic). Example: "Soviet Constructivist aesthetic with bold geometric shapes, high contrast, heroic perspective angles, limited color palette of red, gold, and black"
-3. **Voice & Tone**: Infer the brand voice from the visual messaging. Propaganda = bold, commanding, inspirational.
-4. **Keywords**: Extract actual themes you see in the imagery.
-5. **Forbidden Elements**: Identify what would break this brand's visual identity.
-
-You MUST respond with this EXACT JSON structure:
-{
-  "visual_identity": {
-    "color_palette_hex": ["#XXXXXX", "#XXXXXX", ...],
-    "style_description": "A concise 1-sentence summary of the core vibe (e.g. 'Cyber-noir aesthetic with neon accents')",
-    "photography_style": "detailed 50+ word description...",
-    "forbidden_elements": ["element1", "element2", ...]
-  },
-  "voice": {
-    "tone": "detailed 50+ word description...",
-    "keywords": ["keyword1", "keyword2", ...]
-  },
-  "risk_thresholds": {
-    "nudity": "STRICT_ZERO_TOLERANCE" or "ALLOW_ARTISTIC",
-    "political": "STRICT_ZERO_TOLERANCE" or "ALLOW_SATIRE"
-  }
-}
-
-BE SPECIFIC AND DETAILED. Do NOT return generic defaults. Analyze what you actually SEE.`;
+    const analysisPrompt = `You are an expert Brand Constitution Architect and Visual Designer.
+    
+    TASK: Deeply analyze the ${imageElements.length} image(s) provided to extract the brand's unique visual and psychological DNA.
+    
+    ${textDescriptions.length > 0 ? `ADDITIONAL CONTEXT FROM CANVAS:\n${textDescriptions.join("\n")}` : ""}
+    
+    CRITICAL ANALYSIS REQUIREMENTS:
+    1. **Visual Style & Era**: Identify the specific art movement, era, or aesthetic. (e.g., '1960s Soviet Constructivist Propaganda', 'Bauhaus Minimalism', '80s Synthwave'). Look for brushwork, grain, halftone patterns, and perspective.
+    2. **Color Palette**: Extract EXACT hex codes. For vintage styles, look for cream/parchment backgrounds, muted primary colors, or high-contrast revolutionary reds.
+    3. **Typography DNA**: From the images, infer the type personality. Is it bold sans-serif, hand-painted calligraphy, or industrial stamping?
+    4. **Psychological Tone**: What emotion does this imagery evoke? Command, inspiration, nostalgia, or power?
+    5. **Signature Elements**: Identify recurring symbols or compositional rules (e.g., 'Heroic low-angle perspective', 'Star motifs', 'Radial sunbursts').
+    
+    You MUST respond with this EXACT JSON structure:
+    {
+      "visual_identity": {
+        "color_palette_hex": ["#XXXXXX", "#XXXXXX", ...],
+        "style_description": "A punchy 1-sentence summary of the core vibe.",
+        "photography_style": "A master-level 60-100 word description of the visual DNA, detailing lighting, texture, and composition rules.",
+        "forbidden_elements": ["List 3-5 visual things that would ruin this vibe"]
+      },
+      "voice": {
+        "tone": "A 50+ word description of how this brand speaks (authoritative, rebellious, etc.)",
+        "keywords": ["5-7 powerful keywords"]
+      },
+      "risk_thresholds": {
+        "nudity": "STRICT_ZERO_TOLERANCE",
+        "political": "ALLOW_SATIRE"
+      }
+    }
+    
+    BE EXTREMELY SPECIFIC. If you see the 1960s propaganda, your 'photography_style' should mention print texture, limited ink layering, and heroic composition.`;
 
     // Add text prompt first
     contentParts.push({ text: analysisPrompt });
@@ -641,7 +605,7 @@ function validateAndSanitizeConstitution(data: any): BrandConstitution {
         defaultConst.visual_identity.photography_style;
 
     // Handle style description - fallback to photography style if missing
-    const styleDescription = 
+    const styleDescription =
         data.visual_identity?.style_description ||
         data.style_description ||
         photographyStyle.split('.')[0] + '.'; // Use first sentence of photography style as fallback
@@ -720,7 +684,11 @@ export async function auditImageCompliance(
         model: "gemini-3-flash-preview",
         generationConfig: {
             responseMimeType: "application/json",
-            // responseSchema removed - conflicts with multimodal content
+            // @ts-expect-error - thinking config is valid in Gemini 3
+            thinkingConfig: {
+                includeThoughts: true,
+                thinkingLevel: getThinkingLevel("audit_compliance"),
+            },
             temperature: 1.0,
         },
     }, { timeout: 45000 }); // 45s max for audit
@@ -896,9 +864,10 @@ export async function runAgentLoop(
             },
         },
         generationConfig: {
-            // @ts-expect-error - thinking config for Gemini 3 (docs only show includeThoughts, not thinkingLevel)
+            // @ts-expect-error - thinking config for Gemini 3
             thinkingConfig: {
                 includeThoughts: true,
+                thinkingLevel: getThinkingLevel("agent_loop"),
             },
             temperature: 1.0,
         },
@@ -1016,21 +985,31 @@ Explain your reasoning before each action.`;
             .map((part) => part.functionCall!);
 
         // Extract thoughts from the model (Gemini 3 native thinking feature)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // In Gemini 3, 'thought' is a boolean flag, and the actual text is in the 'text' property of the same part.
         const thoughts = candidate.content.parts
-            .map((part: unknown) => (part as { thought?: string }).thought)
-            .filter(Boolean)
+            .filter((part: any) => part.thought && part.text)
+            .map((part: any) => part.text)
             .join("\n");
+
+        // Extract thought signatures for Gemini 3 multi-turn consistency
+        const thoughtSignatures = candidate.content.parts
+            .filter((part: any) => part.thoughtSignature)
+            .map((part: any) => part.thoughtSignature);
+        const mainSignature = thoughtSignatures[0]; // Use the primary signature for this turn
+
+        // Log if signatures are present for debugging
+        if (thoughtSignatures.length > 0) {
+            console.log(`[Agent Loop] Detected ${thoughtSignatures.length} thoughtSignatures in model response`);
+        }
 
         if (functionCalls.length === 0) {
             // No function call, agent is done or stuck
             break;
         }
 
-        // Execute each function call
+        // Execute tools in parallel for maximum efficiency (Opus 4.5 Standard)
         const functionResponses: Part[] = [];
-
-        for (const fc of functionCalls) {
+        const toolPromises = functionCalls.map(async (fc) => {
             state.step++;
 
             // Execute the tool
@@ -1039,7 +1018,20 @@ Explain your reasoning before each action.`;
                 fc.args as Record<string, unknown>,
                 state
             );
-            state = newState;
+
+            // Note: We need to be careful with state updates in parallel.
+            // For now, we update local variables and merge them.
+            // But since 'state' is mostly updated by executeTool for 'phase' and 'attempts', 
+            // and tools in a parallel turn are usually independent (e.g. analyze + search), 
+            // we will sequentially merge the states after Promise.all to be safe.
+            return { fc, result, newState };
+        });
+
+        const toolResults = await Promise.all(toolPromises);
+
+        for (const { fc, result, newState } of toolResults) {
+            // Merge state (last one wins for phase/attempts, but we should be smarter)
+            state = { ...state, ...newState, history: state.history };
 
             // Log the action with thinking
             const action: AgentAction = {
@@ -1048,19 +1040,19 @@ Explain your reasoning before each action.`;
                 input: fc.args as Record<string, unknown>,
                 output: result,
                 thinking: thoughts || undefined,
+                thoughtSignature: mainSignature,
             };
             state.history.push(action);
             onAction(action);
 
             // Build function response - SUMMARIZE to avoid sending large base64 data back to Gemini
-            // The model only needs to know success/failure, not the actual image bytes
             const summarizedResult = summarizeFunctionResponse(fc.name, result as object);
             functionResponses.push({
                 functionResponse: {
                     name: fc.name,
                     response: summarizedResult,
                 },
-            });
+            } as any);
 
             // Check if we're done
             if (fc.name === "complete_task") {
@@ -1085,12 +1077,17 @@ Explain your reasoning before each action.`;
 
         while (retryCount <= maxRetries) {
             try {
-                // Debug: log payload size to diagnose timeouts
-                const payloadSize = JSON.stringify(functionResponses).length;
-                console.log(`[Agent Loop] Sending ${functionResponses.length} responses, payload size: ${payloadSize} bytes, step: ${state.step}`);
+                // Debug: log signature state in history to diagnose Gemini 3 aborts
+                const currentHistory = await chat.getHistory();
+                const lastModelTurn = currentHistory.filter(h => h.role === 'model').pop();
+                const sigCount = lastModelTurn?.parts.filter((p: any) => p.thoughtSignature).length || 0;
+                console.log(`[Agent Loop] Sending ${functionResponses.length} responses, step: ${state.step}`);
+                console.log(`[Agent Loop] History: ${currentHistory.length} turns, Last signatures: ${sigCount}`);
 
-                // Use the original chat which preserves thought_signature in history
-                response = await chat.sendMessage(functionResponses, { timeout: 120000 }); // 120s timeout for accumulated history
+                // Use a longer timeout for complex agent states
+                response = await chat.sendMessage(functionResponses, {
+                    timeout: 180000
+                });
                 apiCallSucceeded = true;
                 break; // Success
             } catch (error) {
