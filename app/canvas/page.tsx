@@ -31,7 +31,7 @@ import {
     Loader2,
     LayoutTemplate,
 } from "lucide-react";
-import { createCanvasElement } from "@/lib/types";
+import { CanvasElement, Brand, BrandConstitution, createCanvasElement, CanvasElementType } from "@/lib/types";
 import {
     getAllBrands,
     createBrand,
@@ -42,14 +42,13 @@ import {
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import ShimmerButton from "@/components/magicui/shimmer-button";
-import type { Brand } from "@/lib/types";
 import { AddImageDialog } from "@/components/canvas/AddImageDialog";
 import { AddColorDialog } from "@/components/canvas/AddColorDialog";
 
 export default function CanvasPage() {
     const {
         elements,
-        addElement,
+        addElement: addElementToStore, // Rename to avoid conflict
         removeElement,
         selectedElementId,
         selectElement,
@@ -58,6 +57,8 @@ export default function CanvasPage() {
         setConstitution,
         currentBrand,
         setCurrentBrand,
+        canvasSettings,
+        setCanvasSettings,
     } = useCanvasStore();
 
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -86,8 +87,8 @@ export default function CanvasPage() {
         if (!newBrandName.trim()) return;
         try {
             // @ts-ignore - ID is auto-generated
-            const newId = await createBrand({ 
-                name: newBrandName, 
+            const newId = await createBrand({
+                name: newBrandName,
                 canvas_elements: [],
                 constitution_cache: null,
                 processed_assets: {},
@@ -105,17 +106,17 @@ export default function CanvasPage() {
 
     async function handleBrandSelect(id: string) {
         setSelectedBrandId(id);
-        
+
         try {
             const brand = await getBrand(id);
             if (brand) {
                 setCurrentBrand(brand);
-                
+
                 // Load constitution specifically if needed, though setCurrentBrand handles it
                 if (brand.constitution_cache) {
                     setConstitution(brand.constitution_cache);
                 }
-                
+
                 setElements(brand.canvas_elements || []);
             }
         } catch (error) {
@@ -123,15 +124,33 @@ export default function CanvasPage() {
         }
     }
 
+    function handleAddElement(type: CanvasElementType) {
+        // Calculate center position based on window (approximate)
+        const x = window.innerWidth / 2 - 100 + (Math.random() * 50 - 25);
+        const y = window.innerHeight / 2 - 100 + (Math.random() * 50 - 25);
+
+        const newEl = createCanvasElement(type, {
+            x,
+            y,
+            text: type === 'text' ? 'New Text' : (type === 'note' ? 'New Note' : undefined),
+            color: type === 'color' ? '#3b82f6' : (type === 'note' ? '#facc15' : undefined), // Default Blue for color, Yellow for note
+        });
+
+        addElementToStore(newEl);
+    }
+
     async function handleAnalyze() {
         if (elements.length === 0) return;
 
         setIsAnalyzing(true);
         try {
-             const response = await fetch("/api/agent/constitution", {
+            const response = await fetch("/api/agent/constitution", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ elements }),
+                body: JSON.stringify({ 
+                    elements, 
+                    settings: canvasSettings // Send the Frame/Aspect Ratio data
+                }),
             });
 
             if (!response.ok) throw new Error("Analysis failed");
@@ -140,7 +159,7 @@ export default function CanvasPage() {
             if (data.constitution) {
                 setConstitution(data.constitution);
                 setConstitutionOpen(true);
-                
+
                 if (currentBrand?.id) {
                     await saveConstitution(currentBrand.id, data.constitution);
                 }
@@ -154,9 +173,9 @@ export default function CanvasPage() {
 
     // Tools Configuration
     const tools = [
-        { id: "text", icon: Type, label: "Add Text", action: () => addElement(createCanvasElement("text", { text: "New Text", x: 100, y: 100 })) },
+        { id: "text", icon: Type, label: "Add Text", action: () => handleAddElement("text") },
         { id: "image", icon: ImageIcon, label: "Add Image", action: () => setIsImageDialogOpen(true) },
-        { id: "note", icon: LayoutTemplate, label: "Add Note", action: () => addElement(createCanvasElement("note", { text: "New Note", x: 200, y: 200 })) },
+        { id: "note", icon: LayoutTemplate, label: "Add Note", action: () => handleAddElement("note") },
         { id: "color", icon: Palette, label: "Add Color", action: () => setIsColorDialogOpen(true) },
     ];
 
@@ -194,7 +213,7 @@ export default function CanvasPage() {
                                 {brands.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                             </select>
                             <DialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full hover:bg-white/10">
+                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full hover:bg-white/10" tabIndex={-1}>
                                     <Plus className="h-3 w-3" />
                                 </Button>
                             </DialogTrigger>
@@ -220,6 +239,20 @@ export default function CanvasPage() {
                     </Dialog>
 
                     <div className="h-6 w-px bg-white/10" />
+
+                     {/* Layout Selector */}
+                     <select
+                        value={canvasSettings?.preset || 'free'}
+                        onChange={(e) => setCanvasSettings({ ...canvasSettings, preset: e.target.value as any, name: e.target.options[e.target.selectedIndex].text })}
+                        className="bg-transparent text-sm font-medium focus:outline-none cursor-pointer max-w-[150px] truncate"
+                    >
+                        <option value="free" className="text-black bg-white">Free Canvas</option>
+                        <option value="1:1" className="text-black bg-white">Post (1:1)</option>
+                        <option value="9:16" className="text-black bg-white">Story (9:16)</option>
+                        <option value="16:9" className="text-black bg-white">Landscape</option>
+                    </select>
+
+                    <div className="h-6 w-px bg-white/10" />
                     
                     {/* Status Indicator */}
                      <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
@@ -236,15 +269,18 @@ export default function CanvasPage() {
                 transition={{ delay: 0.2 }}
                 className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 glass px-4 py-3 rounded-full flex items-center gap-3 shadow-2xl border-white/10 backdrop-blur-xl hover:scale-105 transition-transform duration-300"
             >
-                <TooltipProvider delayDuration={0}>
+                <TooltipProvider delayDuration={300} disableHoverableContent>
                     {tools.map((tool) => (
                         <Tooltip key={tool.id}>
-                            <TooltipTrigger asChild onPointerDown={(e) => e.preventDefault()}>
+                            <TooltipTrigger asChild>
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    onClick={tool.action}
-                                    className="rounded-full hover:bg-white/10 hover:text-primary transition-all active:scale-95"
+                                    onClick={(e) => { 
+                                        e.preventDefault();
+                                        tool.action(); 
+                                    }}
+                                    className="rounded-full hover:bg-white/10 hover:text-primary transition-all active:scale-95 focus:outline-none focus:ring-0"
                                 >
                                     <tool.icon className="h-5 w-5" />
                                 </Button>
@@ -257,9 +293,9 @@ export default function CanvasPage() {
                     
                     <div className="h-8 w-px bg-white/10 mx-2" />
                     
-                    {selectedElementId && (
+                     {selectedElementId && (
                          <Tooltip>
-                            <TooltipTrigger asChild>
+                            <TooltipTrigger asChild onPointerDown={(e) => e.preventDefault()}>
                                 <Button
                                     variant="destructive"
                                     size="icon"
@@ -276,7 +312,7 @@ export default function CanvasPage() {
                     )}
 
                     <Tooltip>
-                         <TooltipTrigger asChild>
+                         <TooltipTrigger asChild onPointerDown={(e) => e.preventDefault()}>
                              <div className="ml-2">
                                 <ShimmerButton 
                                     onClick={handleAnalyze} 
@@ -387,12 +423,12 @@ export default function CanvasPage() {
             <AddImageDialog 
                 open={isImageDialogOpen} 
                 onOpenChange={setIsImageDialogOpen} 
-                onAddImage={(url) => addElement(createCanvasElement("image", { url, x: 150, y: 150 }))} 
+                onAddImage={(url) => addElementToStore(createCanvasElement("image", { url, x: 150, y: 150 }))} 
             />
             <AddColorDialog 
                 open={isColorDialogOpen} 
                 onOpenChange={setIsColorDialogOpen} 
-                onAddColor={(color) => addElement(createCanvasElement("color", { color, x: 250, y: 250 }))} 
+                onAddColor={(color) => addElementToStore(createCanvasElement("color", { color, x: 250, y: 250 }))} 
             />
 
         </div>

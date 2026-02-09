@@ -28,11 +28,16 @@ interface CanvasState {
     removeElement: (id: string) => void;
     updateElementPosition: (id: string, x: number, y: number) => void;
     updateElement: (id: string, updates: Partial<CanvasElement>) => void;
+    reorderElement: (id: string, direction: 'front' | 'back') => void; // New action
     selectElement: (id: string | null) => void;
     setConstitution: (constitution: BrandConstitution | null) => void;
     setIsAnalyzing: (analyzing: boolean) => void;
     setIsSaving: (saving: boolean) => void;
     setError: (error: string | null) => void;
+    
+    // Canvas Settings
+    canvasSettings: { width: number; height: number; name: string; preset: 'free' | '1:1' | '9:16' | '16:9' };
+    setCanvasSettings: (settings: { width: number; height: number; name: string; preset: 'free' | '1:1' | '9:16' | '16:9' }) => void;
     reset: () => void;
 }
 
@@ -44,6 +49,7 @@ const initialState = {
     isAnalyzing: false,
     isSaving: false,
     error: null,
+    canvasSettings: { width: 1080, height: 1080, name: 'Free', preset: 'free' as const },
 };
 
 export const useCanvasStore = create<CanvasState>((set) => ({
@@ -85,6 +91,23 @@ export const useCanvasStore = create<CanvasState>((set) => ({
             ),
         })),
 
+    reorderElement: (id, direction) => 
+        set((state) => {
+            const index = state.elements.findIndex(el => el.id === id);
+            if (index === -1) return {};
+
+            const newElements = [...state.elements];
+            const [item] = newElements.splice(index, 1);
+
+            if (direction === 'front') {
+                newElements.push(item);
+            } else {
+                newElements.unshift(item);
+            }
+
+            return { elements: newElements };
+        }),
+
     selectElement: (id) => set({ selectedElementId: id }),
 
     setConstitution: (constitution) => set({ constitution }),
@@ -94,6 +117,8 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     setIsSaving: (isSaving) => set({ isSaving }),
 
     setError: (error) => set({ error }),
+    
+    setCanvasSettings: (canvasSettings) => set({ canvasSettings }),
 
     reset: () => set(initialState),
 }));
