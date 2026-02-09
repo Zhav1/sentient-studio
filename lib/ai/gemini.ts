@@ -248,6 +248,24 @@ export async function executeTool(
 
 // ============ IMAGE GENERATION ============
 
+export function buildEnhancedPrompt(
+    prompt: string,
+    options?: {
+        styleGuide?: string;
+        colorPalette?: string[];
+        forbiddenElements?: string[];
+        imageSize?: string;
+    }
+): string {
+    const { styleGuide, colorPalette, forbiddenElements, imageSize } = options || {};
+    let enhancedPrompt = prompt;
+    if (styleGuide) enhancedPrompt += `\nSTYLE GUIDE: ${styleGuide}`;
+    if (colorPalette?.length) enhancedPrompt += `\nCOLORS: ${colorPalette.join(", ")}`;
+    if (forbiddenElements?.length) enhancedPrompt += `\nFORBIDDEN: ${forbiddenElements.join(", ")}`;
+    if (imageSize) enhancedPrompt += `\nRESOLUTION: ${imageSize}`;
+    return enhancedPrompt;
+}
+
 export async function generateImageWithNanoBanana(
     prompt: string,
     options?: {
@@ -261,11 +279,12 @@ export async function generateImageWithNanoBanana(
     const client = getGeminiClient();
     const { styleGuide, colorPalette, forbiddenElements, aspectRatio = "1:1", imageSize = "2K" } = options || {};
 
-    let enhancedPrompt = prompt;
-    if (styleGuide) enhancedPrompt += `\nSTYLE GUIDE: ${styleGuide}`;
-    if (colorPalette?.length) enhancedPrompt += `\nCOLORS: ${colorPalette.join(", ")}`;
-    if (forbiddenElements?.length) enhancedPrompt += `\nFORBIDDEN: ${forbiddenElements.join(", ")}`;
-    enhancedPrompt += `\nRESOLUTION: ${imageSize}`;
+    const enhancedPrompt = buildEnhancedPrompt(prompt, {
+        styleGuide,
+        colorPalette,
+        forbiddenElements,
+        imageSize
+    });
 
     const model = client.getGenerativeModel({
         model: "gemini-3-pro-image-preview",

@@ -1,4 +1,4 @@
-# Project Status: Sentient Studio
+@# Project Status: Sentient Studio
 
 > Last Updated: 2026-02-09 22:18 (UTC+7)
 
