@@ -42,7 +42,11 @@ export async function POST(request: NextRequest) {
         }
 
         // Build the enhanced prompt using the constitution
-        const enhancedPrompt = buildEnhancedPrompt(prompt, constitution);
+        const enhancedPrompt = buildEnhancedPrompt(prompt, {
+            styleGuide: constitution.visual_identity.style_description,
+            colorPalette: constitution.visual_identity.color_palette_hex,
+            forbiddenElements: constitution.visual_identity.forbidden_elements,
+        });
 
         // TODO: When Gemini image generation is available, generate the actual image here
         // For now, we return the enhanced prompt for manual use or external generation
