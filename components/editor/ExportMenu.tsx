@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import * as fabric from "fabric";
-import { Download, FileText, Share2, ChevronDown } from "lucide-react";
+import { Download, FileText, Share2, ChevronDown, Youtube, Instagram, Clapperboard, Monitor } from "lucide-react";
 import jsPDF from "jspdf";
 
 interface ExportMenuProps {
@@ -99,6 +99,33 @@ export function ExportMenu({ fabricCanvas, imageName = "sentient-asset" }: Expor
         showStatus("Coming soon to Brand Kit!");
     };
 
+    const handlePlatformExport = async (platform: string, width: number, height: number) => {
+        if (!fabricCanvas) return;
+        setIsExporting(true);
+        setIsOpen(false);
+        showStatus(`Preparing ${platform} asset...`);
+
+        try {
+            const dataUrl = fabricCanvas.toDataURL({
+                format: "png",
+                quality: 1,
+                multiplier: Math.max(width / fabricCanvas.width!, height / fabricCanvas.height!),
+            });
+
+            const link = document.createElement("a");
+            link.download = `${imageName}-${platform.toLowerCase().replace(" ", "-")}.png`;
+            link.href = dataUrl;
+            link.click();
+
+            showStatus(`${platform} asset exported!`);
+        } catch (error) {
+            console.error(`${platform} Export error:`, error);
+            showStatus("Export failed");
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     return (
         <div className="relative inline-block" ref={dropdownRef}>
             <button
@@ -147,6 +174,33 @@ export function ExportMenu({ fabricCanvas, imageName = "sentient-asset" }: Expor
                         >
                             <Download size={16} className="text-purple-400" />
                             PNG (Ultra-Res 4K)
+                        </button>
+                    </div>
+
+                    <div className="p-2 border-b border-t border-white/5 bg-white/5">
+                        <span className="text-[10px] uppercase tracking-wider text-white/40 font-bold ml-2">Social Presets</span>
+                    </div>
+                    <div className="p-1">
+                        <button
+                            onClick={() => handlePlatformExport("YouTube", 1280, 720)}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-sm text-white/80 hover:bg-white/5 hover:text-white rounded-md transition-colors text-left"
+                        >
+                            <Youtube size={16} className="text-red-500" />
+                            YouTube Thumbnail
+                        </button>
+                        <button
+                            onClick={() => handlePlatformExport("Instagram", 1080, 1920)}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-sm text-white/80 hover:bg-white/5 hover:text-white rounded-md transition-colors text-left"
+                        >
+                            <Instagram size={16} className="text-pink-500" />
+                            Instagram Story
+                        </button>
+                        <button
+                            onClick={() => handlePlatformExport("TikTok", 1080, 1920)}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-sm text-white/80 hover:bg-white/5 hover:text-white rounded-md transition-colors text-left"
+                        >
+                            <Clapperboard size={16} className="text-cyan-400" />
+                            TikTok Cover
                         </button>
                     </div>
 
