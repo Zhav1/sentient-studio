@@ -266,6 +266,7 @@ No competitor occupies this quadrant. This is our moat.
 | AI Editing | `gemini-3-pro-image-preview` | Conversational image editing |
 | Trend Research | `gemini-3-flash-preview` | Google Search grounding |
 | Compliance Audit | `gemini-3-flash-preview` | Brand consistency verification |
+| Visual Grounding | `GoogleAIFileManager` | State-consistent visual history |
 
 ---
 
@@ -436,15 +437,10 @@ interface BrandConstitution {
 
 ```typescript
 interface AuditResult {
-  overall_score: number; // 0-100
-  passes: boolean; // score >= 80
-  violations: Array<{
-    category: 'color' | 'typography' | 'style' | 'composition';
-    severity: 'critical' | 'major' | 'minor';
-    description: string;
-    suggestion: string;
-  }>;
-  strengths: string[];
+  compliance_score: number;       // 0-100
+  pass: boolean;                  // Score >= threshold
+  heatmap_coordinates: number[];  // [x, y] coordinates of issues (optional)
+  fix_instructions: string;       // Actionable feedback
 }
 ```
 
@@ -539,6 +535,7 @@ interface TrendContext {
 **Capabilities:**
 
 - Thought signature preservation (Gemini 3 requirement)
+- **Visual Proof-of-Work**: Visual grounding via Gemini Files API (`file_uri`)
 - Conversation continuity across sessions
 - Correction-based learning (user edits improve future outputs)
 - Brand evolution tracking (how style changes over time)

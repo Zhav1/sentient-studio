@@ -31,18 +31,30 @@ export async function POST(request: NextRequest) {
         const encoder = new TextEncoder();
         const stream = new TransformStream();
         const writer = stream.writable.getWriter();
+        let isStreamClosed = false;
 
-        // Helper to send SSE events
+        // Helper to send SSE events safely
         const sendEvent = async (event: string, data: unknown) => {
-            const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-            await writer.write(encoder.encode(message));
+            if (isStreamClosed || request.signal.aborted) return;
+            try {
+                const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+                await writer.write(encoder.encode(message));
+            } catch (err) {
+                console.warn("Stream write failed:", err);
+                isStreamClosed = true;
+            }
         };
 
-        // Keep-alive heartbeat (send every 5s for Vercel Hobby plan compatibility)
+        // Keep-alive heartbeat
         const heartbeat = setInterval(async () => {
+            if (isStreamClosed || request.signal.aborted) {
+                clearInterval(heartbeat);
+                return;
+            }
             try {
                 await writer.write(encoder.encode(": keep-alive\n\n"));
             } catch {
+                isStreamClosed = true;
                 clearInterval(heartbeat);
             }
         }, 5000);
@@ -61,6 +73,8 @@ export async function POST(request: NextRequest) {
                     prompt,
                     canvasElements || [],
                     async (action: AgentAction) => {
+                        if (request.signal.aborted) throw new Error("Client disconnected");
+
                         // Stream each action to the client
                         await sendEvent("action", {
                             step: action.timestamp,
@@ -68,7 +82,7 @@ export async function POST(request: NextRequest) {
                             input: summarizeInput(action.input),
                             output: summarizeOutput(action.output),
                             thinking: action.thinking || getThinkingMessage(action.tool),
-                            signature: action.thoughtSignature, // Added for continuity tracking
+                            signature: action.thoughtSignature,
                         });
                     },
                     savedConstitution
@@ -95,12 +109,21 @@ export async function POST(request: NextRequest) {
                 });
             } catch (error) {
                 console.error("Agent error:", error);
-                await sendEvent("error", {
-                    message: error instanceof Error ? error.message : "Unknown error",
-                });
+                if (!isStreamClosed && !request.signal.aborted) {
+                    await sendEvent("error", {
+                        message: error instanceof Error ? error.message : "Unknown error",
+                    });
+                }
             } finally {
                 clearInterval(heartbeat);
-                await writer.close();
+                if (!isStreamClosed) {
+                    try {
+                        await writer.close();
+                    } catch (e) {
+                        // Ignore
+                    }
+                    isStreamClosed = true;
+                }
             }
         })();
 

@@ -180,6 +180,7 @@ export interface AgentAction {
     output: unknown;
     thinking?: string;
     thoughtSignature?: string;
+    fileUri?: string; // NEW: Gemini Files API URI for visual grounding
 }
 
 /**

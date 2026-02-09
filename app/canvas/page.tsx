@@ -388,7 +388,7 @@ export default function CanvasPage() {
                                 <div className="space-y-2">
                                     <Label className="text-xs font-mono text-muted-foreground uppercase">Palette</Label>
                                     <div className="flex flex-wrap gap-2">
-                                        {constitution.visual_identity.color_palette_hex.map((color: string, i: number) => (
+                                        {constitution.visual_identity.color_palette_hex?.map((color: string, i: number) => (
                                             <div key={i} className="group relative">
                                                 <div
                                                     className="w-10 h-10 rounded-full border border-white/20 shadow-lg transition-transform hover:scale-110 cursor-pointer"

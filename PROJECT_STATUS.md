@@ -2,7 +2,7 @@
 
 > Last Updated: 2026-02-09 22:18 (UTC+7)
 
-## Current Phase: ✅ OPUS 4.5 OPTIMIZED (PROJECT COMPLETE)
+## Current Phase: ✅ OPUS 4.5 HARDENING COMPLETE
 
 ---
 
@@ -15,6 +15,9 @@
 - [x] Gemini 3 Signature Logic Correction
 - [x] Tool Schema Simplification (500 Error Fix)
 - [x] UI/UX Polish (Tooltip bug, Dark mode visibility)
+- [x] Visual Grounding (Files API Integration for Agent "Eyes")
+- [x] Multi-Turn History Persistence (Resuming Turn Architecture)
+- [x] **Brand Intelligence** (Art Director Persona + Strict JSON Schema)
 
 ### Phase 1-13: Core, Agents & Canvas ✅
 
@@ -35,6 +38,8 @@
 | Parallel Execution | ✅ ACTIVE | Orchestrator Loop |
 | Signature Hardening | ✅ ACTIVE | Turn-consistent Reasoning |
 | Mask Inpainting | ✅ ACTIVE | Region-selective AI edit |
+| Visual Grounding | ✅ ACTIVE | Gemini Files API integration |
+| **Brand DNA** | ✅ ACTIVE | **Art Director Persona** (No generics) |
 
 ---
 
@@ -46,13 +51,21 @@
 
 - **Symptom**: Persistent `500 Internal Server Error` during `generateContent` or agent loop initialization.
 - **Root Cause**: Two-fold:
-  1. **Schema Overload**: Passing large, deeply nested JSON objects (like 6 base64 images or a complex Brand Constitution) through `functionCall` parameters exceeds the stable limit for the Gemini 3 Flash backend.
+  1. **Schema Overload**: Passing large, deeply nested JSON objects through `functionCall` parameters exceeds the stable limit for the Gemini 3 Flash backend.
   2. **JSON Mode Conflict**: Using `responseMimeType: "application/json"` concurrently with `thinkingConfig` and function calling triggered internal model errors.
 - **Fix**:
-  - Simplified `AGENT_TOOLS` schemas in `tools.ts` to remove nested objects.
-  - The agent now relies on its **Internal State (Memory)** to inject large data directly into tool handlers, keeping the API transport lightweight.
-  - Removed `responseMimeType: "application/json"` from the orchestrator loop.
+  - Simplified `AGENT_TOOLS` schemas (removed nested objects).
+  - The agent now relies on its **Internal State** to inject large data directly into tool handlers, keeping the API transport lightweight.
 - **File**: [`tools.ts`](file:///d:/College/Gemini%20Hackathon/sentient-studio/lib/ai/tools.ts), [`gemini.ts`](file:///d:/College/Gemini%20Hackathon/sentient-studio/lib/ai/gemini.ts)
+
+#### Bug #12: "Operation Aborted" Errors during Multi-Turn Reasoning
+
+- **Symptom**: `[GoogleGenerativeAI Error]: This operation was aborted` during Turn 3 or 4 of the agent loop.
+- **Root Cause**: High-latency turns (Multi-modal thinking) exceeded the default 90/180s timeouts, or the history became too "jittery" for a single user turn.
+- **Fix**:
+  - **Stable Grounding**: Migrated the 4,000-character system message to `systemInstruction` for more reliable reasoning persistence.
+  - **Extreme Timeout**: Increased global and request timeouts to **300.000ms (5 minutes)** to accommodate deep thinking.
+- **File**: [`gemini.ts`](file:///d:/College/Gemini%20Hackathon/sentient-studio/lib/ai/gemini.ts)
 
 #### Bug #10: Thought Signature Validation Failures (4xx/500 Errors)
 
@@ -67,6 +80,30 @@
 - **Fix**:
   - Added `dark:text-white` to `ShimmerButton.tsx`.
   - Applied `disableHoverableContent` to Radix tooltips in `page.tsx` to ensure they clear on state transitions.
+
+#### Bug #13: Iterative Looping ("Trying and Trying")
+
+- **Symptom**: Agent successfully generates image but then enters a loop saying "I see you didn't generate... let me try again" or repeating tool calls.
+- **Root Cause**: The orchestrator was visually "blind" after tool execution. Large base64 data was stripped from history to prevent payload 500s, leaving the orchestrator with no proof of work.
+- **Fix**: Implemented **Visual Grounding** using the Gemini Files API. Generated images are uploaded, and the resulting `file_uri` is persisted in the action history. The orchestrator now "sees" its output via the grounded URI.
+- **File**: [`gemini.ts`](file:///d:/College/Gemini%20Hackathon/sentient-studio/lib/ai/gemini.ts)
+
+#### Bug #14: Agent State Loss on History Resumption
+
+- **Symptom**: "Operation Aborted" or generic 400 errors when the agent attempted subsequent turns in a multi-turn conversation.
+- **Root Cause**: History reconstruction in `runAgentLoop` was failing to map `thoughtSignatures` and state objects correctly when resuming from `previousActions`.
+- **Fix**: Rebuilt the `runAgentLoop` initialization logic to surgical precision, ensuring `previousActions` are mapped into a valid Gemini `Content` history and state is fully hydrated (image, constitution, audit score).
+- **File**: [`gemini.ts`](file:///d:/College/Gemini%20Hackathon/sentient-studio/lib/ai/gemini.ts)
+
+#### Bug #15: "Clean" Vibe Hallucination & Black/White Palette
+
+- **Symptom**: Brand analysis defaulted to generic "Clean/Modern" and "Black/White" palettes despite specific inputs (e.g., Soviet Posters).
+- **Root Cause**: Prompt laxity and implicit default fallback in `validateAndSanitizeConstitution`. The model wasn't strictly forced to extract specific art movements or valid color arrays.
+- **Fix**:
+  - **Persona Injection**: "World-Class Art Director" persona added to prompt.
+  - **Schema Enforcement**: Added specific one-shot JSON example with rich colors to prompt.
+  - **Defensive UI**: Added optional chaining `?.` to frontend map calls.
+- **File**: [`gemini.ts`](file:///d:/College/Gemini%20Hackathon/sentient-studio/lib/ai/gemini.ts)
 
 ### Performance & Intelligence Tiering
 
