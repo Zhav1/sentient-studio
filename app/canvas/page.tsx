@@ -98,7 +98,8 @@ export default function CanvasPage() {
             loadBrands();
             handleBrandSelect(newId);
         } catch (error) {
-            console.error("Failed to create brand:", error);
+            console.error("Failed to create brand FULL ERROR:", error);
+            alert(`Failed to create brand: ${(error as Error).message}`);
         }
     }
 
@@ -238,7 +239,7 @@ export default function CanvasPage() {
                 <TooltipProvider delayDuration={0}>
                     {tools.map((tool) => (
                         <Tooltip key={tool.id}>
-                            <TooltipTrigger asChild>
+                            <TooltipTrigger asChild onPointerDown={(e) => e.preventDefault()}>
                                 <Button
                                     variant="ghost"
                                     size="icon"

@@ -51,9 +51,14 @@ export function AddColorDialog({ open, onOpenChange, onAddColor }: AddColorDialo
                             <Input
                                 id="hex"
                                 value={color}
-                                onChange={(e) => setColor(e.target.value)}
+                                onChange={(e) => {
+                                    let val = e.target.value;
+                                    if (val.length > 0 && !val.startsWith('#')) val = '#' + val;
+                                    setColor(val);
+                                }}
                                 className="bg-black/50 border-white/10 font-mono"
                                 placeholder="#000000"
+                                maxLength={7}
                             />
                         </div>
                     </div>

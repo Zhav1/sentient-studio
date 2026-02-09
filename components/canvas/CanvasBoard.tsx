@@ -124,16 +124,15 @@ export function CanvasBoard() {
             <AnimatePresence>
                 {elements.map(el => {
                     const props = {
-                        key: el.id,
                         element: el,
                         isSelected: selectedElementId === el.id,
                         onClick: () => selectElement(el.id)
                     };
 
-                    if (el.type === 'image') return <CanvasImage {...props} />;
-                    if (el.type === 'text') return <CanvasText {...props} />;
-                    if (el.type === 'note') return <CanvasNote {...props} />;
-                    if (el.type === 'color') return <CanvasColor {...props} />;
+                    if (el.type === 'image') return <CanvasImage key={el.id} {...props} />;
+                    if (el.type === 'text') return <CanvasText key={el.id} {...props} />;
+                    if (el.type === 'note') return <CanvasNote key={el.id} {...props} />;
+                    if (el.type === 'color') return <CanvasColor key={el.id} {...props} />;
                     return null;
                 })}
             </AnimatePresence>
