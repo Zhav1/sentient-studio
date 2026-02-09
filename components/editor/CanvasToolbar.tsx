@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { MousePointer2, Type, Square, Circle, Pencil, Trash2, Download, Eraser, Wand2 } from "lucide-react";
 
 export type EditorTool = "select" | "text" | "rect" | "circle" | "draw" | "mask" | "mask-rect";
@@ -56,7 +57,7 @@ export function CanvasToolbar({
     const isMaskTool = activeTool === "mask" || activeTool === "mask-rect";
 
     return (
-        <div className="flex items-center justify-between bg-black/40 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/10">
+        <div className="relative z-50 flex items-center justify-between bg-black/40 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/10">
             {/* Drawing Tools */}
             <div className="flex items-center gap-1">
                 {tools.map((tool) => (

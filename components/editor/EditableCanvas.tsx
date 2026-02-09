@@ -320,15 +320,29 @@ export function EditableCanvas({
     /**
      * Extract mask as a binary (black/white) base64 image
      * White = areas to edit, Black = areas to preserve
+     * SCALED to match the original image resolution, not the screen canvas size.
      */
     const extractMask = useCallback((): string | null => {
         const canvas = fabricRef.current;
         if (!canvas || maskObjects.length === 0) return null;
 
-        // Create a temporary canvas for mask extraction
+        // Get the background image to determine original size and scale
+        const bgImage = canvas.backgroundImage as fabric.Image;
+        if (!bgImage) return null;
+
+        // Original dimensions of the image
+        const originalWidth = bgImage.width || 800;
+        const originalHeight = bgImage.height || 600;
+        
+        // Current scale of the image on canvas (it was scaled to fit)
+        // We need to un-scale the mask coordinates to match original image
+        const scaleX = bgImage.scaleX || 1;
+        const scaleY = bgImage.scaleY || 1;
+
+        // Create a temporary canvas matching the ORIGINAL image size
         const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = canvas.width!;
-        tempCanvas.height = canvas.height!;
+        tempCanvas.width = originalWidth;
+        tempCanvas.height = originalHeight;
         const ctx = tempCanvas.getContext("2d");
         if (!ctx) return null;
 
@@ -340,42 +354,55 @@ export function EditableCanvas({
         ctx.fillStyle = "#ffffff";
         ctx.strokeStyle = "#ffffff";
 
+        // Calculate offset to map canvas coordinates to image coordinates
+        // The image is centered, so we need to account for that
+        const center = canvas.getCenterPoint();
+        const imgLeft = center.x - (originalWidth * scaleX) / 2;
+        const imgTop = center.y - (originalHeight * scaleY) / 2;
+
         maskObjects.forEach((obj) => {
             if (!obj) return;
             const bounds = obj.getBoundingRect();
 
+            // Transform coordinates: (ScreenCoord - ImageOffset) / Scale
+            const relativeLeft = (bounds.left - imgLeft) / scaleX;
+            const relativeTop = (bounds.top - imgTop) / scaleY;
+            const relativeWidth = bounds.width / scaleX;
+            const relativeHeight = bounds.height / scaleY;
+
             if (obj.type === "rect") {
-                ctx.fillRect(bounds.left, bounds.top, bounds.width, bounds.height);
+                ctx.fillRect(relativeLeft, relativeTop, relativeWidth, relativeHeight);
             } else if (obj.type === "circle") {
-                const centerX = bounds.left + bounds.width / 2;
-                const centerY = bounds.top + bounds.height / 2;
-                const radius = Math.min(bounds.width, bounds.height) / 2;
+                const centerX = relativeLeft + relativeWidth / 2;
+                const centerY = relativeTop + relativeHeight / 2;
+                const radius = Math.min(relativeWidth, relativeHeight) / 2;
                 ctx.beginPath();
                 ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
                 ctx.fill();
             } else if (obj.type === "path") {
-                // For brush strokes, draw with thick white stroke
-                ctx.lineWidth = 30;
+                // Brush stroke
+                ctx.lineWidth = 30 / scaleX; // Adjust stroke width for scale
                 ctx.lineCap = "round";
                 ctx.lineJoin = "round";
 
-                // Get the path data and draw
                 const path = obj as fabric.Path;
                 if (path.path) {
                     ctx.beginPath();
                     path.path.forEach((cmd) => {
                         const command = cmd[0];
+                        // Helper to transform a point
+                        const tx = (val: number) => (val + bounds.left - imgLeft) / scaleX;
+                        const ty = (val: number) => (val + bounds.top - imgTop) / scaleY;
+
                         if (command === "M") {
-                            ctx.moveTo((cmd[1] as number) + bounds.left, (cmd[2] as number) + bounds.top);
+                            ctx.moveTo(tx(cmd[1] as number), ty(cmd[2] as number));
                         } else if (command === "Q") {
                             ctx.quadraticCurveTo(
-                                (cmd[1] as number) + bounds.left,
-                                (cmd[2] as number) + bounds.top,
-                                (cmd[3] as number) + bounds.left,
-                                (cmd[4] as number) + bounds.top
+                                tx(cmd[1] as number), ty(cmd[2] as number),
+                                tx(cmd[3] as number), ty(cmd[4] as number)
                             );
                         } else if (command === "L") {
-                            ctx.lineTo((cmd[1] as number) + bounds.left, (cmd[2] as number) + bounds.top);
+                            ctx.lineTo(tx(cmd[1] as number), ty(cmd[2] as number));
                         }
                     });
                     ctx.stroke();
