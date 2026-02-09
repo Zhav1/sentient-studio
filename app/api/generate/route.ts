@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildEnhancedPrompt } from "@/lib/ai";
+import { buildEnhancedPrompt, generateImageWithNanoBanana } from "@/lib/ai/gemini";
 import type { BrandConstitution } from "@/lib/types";
 
 export interface GenerateRequest {
@@ -44,20 +44,42 @@ export async function POST(request: NextRequest) {
         // Build the enhanced prompt using the constitution
         const enhancedPrompt = buildEnhancedPrompt(prompt, constitution);
 
-        // TODO: When Gemini image generation is available, generate the actual image here
-        // For now, we return the enhanced prompt for manual use or external generation
+        console.log("[Generate API] Generating image with Nano Banana...", { promptLength: enhancedPrompt.length });
 
-        // Placeholder response
+        // REAL AI GENERATION
+        // Uses Gemini 3 Pro Image (Nano Banana) to generate high-fidelity assets
+        let imageBase64: string | null = null;
+        
+        try {
+            imageBase64 = await generateImageWithNanoBanana(prompt, {
+                styleGuide: constitution.visual_identity.style_description,
+                colorPalette: constitution.visual_identity.color_palette_hex,
+                forbiddenElements: constitution.visual_identity.forbidden_elements,
+                imageSize: "2K", // Default to high quality
+                aspectRatio: "1:1" // Default square for now, could be dynamic
+            });
+        } catch (genError) {
+             console.error("[Generate API] Generation failed:", genError);
+             throw genError;
+        }
+
+        if (!imageBase64) {
+            throw new Error("No image generated");
+        }
+
+        // Format as data URL
+        const imageUrl = `data:image/png;base64,${imageBase64}`;
+
         return NextResponse.json({
             enhancedPrompt,
-            imageUrl: null, // Will be populated when image generation is integrated
-            status: "pending",
-            message: "Enhanced prompt generated. Image generation coming soon.",
+            imageUrl: imageUrl, 
+            status: "success",
+            message: "Asset generated successfully using Gemini 3 Pro Image",
         } satisfies GenerateResponse);
     } catch (error) {
         console.error("Agent B (Fabricator) error:", error);
         return NextResponse.json(
-            { error: "Failed to generate asset" },
+            { error: "Failed to generate asset", details: error instanceof Error ? error.message : String(error) },
             { status: 500 }
         );
     }

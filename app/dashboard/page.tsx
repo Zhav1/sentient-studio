@@ -379,7 +379,7 @@ export default function DashboardPage() {
                                             COMPUTING...
                                         </div>
                                     </div>
-                                ) : finalImage && finalImage !== "PLACEHOLDER_IMAGE_BASE64" ? (
+                                    ) : finalImage ? (
                                     <motion.div 
                                         initial={{ scale: 0.9, opacity: 0 }}
                                         animate={{ scale: 1, opacity: 1 }}

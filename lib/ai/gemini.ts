@@ -144,6 +144,7 @@ function summarizeFunctionResponse(toolName: string, result: object): object {
                 compliance_score: obj.compliance_score,
                 pass: obj.pass,
                 fix_instructions: obj.fix_instructions,
+                heatmap_coordinates: obj.heatmap_coordinates, // Keep coordinates for frontend visualization
                 issue_count: Array.isArray(obj.heatmap_coordinates) ? obj.heatmap_coordinates.length : 0,
             };
         case "analyze_canvas":

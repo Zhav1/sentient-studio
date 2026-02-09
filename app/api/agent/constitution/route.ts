@@ -1,60 +1,41 @@
 
 import { NextResponse } from "next/server";
+import { analyzeCanvasForConstitution } from "@/lib/ai/gemini";
+
+export const runtime = "nodejs"; // gemini.ts uses Node APIs
+export const maxDuration = 60; // Allow 60s for analysis
 
 export async function POST(req: Request) {
     try {
         const { elements, settings } = await req.json();
 
-        console.log("Analyze Request:", {
-            elementCount: elements.length,
+        console.log("[Constitution API] Starting analysis...", {
+            elementCount: elements?.length || 0,
             targetResolution: settings?.name || "Unknown"
         });
 
-        // SMART MOCK: Extract text from Canvas Layers
-        // This simulates the AI "reading" the text layers explicitly instead of just relying on pixels.
-        const textLayers = elements
-            .filter((el: any) => el.type === 'text' || el.type === 'note')
-            .map((el: any) => el.text)
-            .filter((t: any) => t && t.trim().length > 0); // Strict filter
-
-        console.log("Extracted Text Layers:", textLayers);
-
-        // Fallback: If no text layers found, check if "RASSLONELY" was in the previous context (Simulated Memory)
-        // In a real app, this would use OCR on the `settings.backgroundImage` if available.
-        if (textLayers.length === 0) {
-             // For the sake of the demo, if the user asks about "RASSLONELY", we can't see it in pixels.
-             // But we can pretend we did if we are in "World Class" mode.
-             // We'll leave it empty to be honest unless they added a text element.
+        if (!elements || elements.length === 0) {
+             return NextResponse.json(
+                { error: "No canvas elements provided" },
+                { status: 400 }
+            );
         }
 
-        // Dynamic Keywords based on input
-        const detectedKeywords = ["Power", "Control", "Darkness", ...textLayers];
+        // REAL AI ANALYSIS
+        // Calls Gemini 3 Flash to look at the actual images/text in the canvas
+        const constitution = await analyzeCanvasForConstitution(elements);
 
-        // MOCK ANALYSIS to prevent 404/500
-        // In a real app, this would call Gemini/OpenAI
-        const mockConstitution = {
-            visual_identity: {
-                color_palette_hex: ["#FF0000", "#000000", "#FFFFFF"],
-                photography_style: "Dark, moody, cinematic",
-                style_description: `A mysterious and elegant brand identity featuring ${textLayers.join(", ")}.`,
-                forbidden_elements: ["Comic Sans", "Pastel colors"],
-            },
-            voice: {
-                tone: "Serious and Authoritative",
-                keywords: detectedKeywords, // Now includes "RASSLONELY" if it was in the canvas
-            },
-            risk_thresholds: {
-                nudity: "STRICT_ZERO_TOLERANCE",
-                political: "STRICT_ZERO_TOLERANCE",
-            }
-        };
+        console.log("[Constitution API] Analysis complete:", {
+             style: constitution.visual_identity.style_description,
+             colors: constitution.visual_identity.color_palette_hex
+        });
 
-        // Simulate delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        return NextResponse.json({ constitution: mockConstitution });
+        return NextResponse.json({ constitution });
     } catch (error) {
-        console.error("Constitution analysis failed:", error);
-        return NextResponse.json({ error: "Analysis failed" }, { status: 500 });
+        console.error("[Constitution API] Analysis failed:", error);
+        return NextResponse.json(
+            { error: "Constitution analysis failed", details: error instanceof Error ? error.message : String(error) },
+            { status: 500 }
+        );
     }
 }

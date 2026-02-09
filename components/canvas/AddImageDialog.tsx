@@ -16,41 +16,54 @@ interface AddImageDialogProps {
 }
 
 export function AddImageDialog({ open, onOpenChange, onAddImage }: AddImageDialogProps) {
-    const [activeTab, setActiveTab] = useState<"url" | "upload">("url");
+    const [activeTab, setActiveTab] = useState<"url" | "upload">("upload");
     const [url, setUrl] = useState("");
-    const [preview, setPreview] = useState<string | null>(null);
+    const [previews, setPreviews] = useState<string[]>([]);
 
     const handleAdd = () => {
         if (activeTab === "url" && url) {
             onAddImage(url);
             onOpenChange(false);
             setUrl("");
-            setPreview(null);
-        } else if (activeTab === "upload" && preview) {
-            onAddImage(preview);
+            setPreviews([]);
+        } else if (activeTab === "upload" && previews.length > 0) {
+            previews.forEach(p => onAddImage(p));
             onOpenChange(false);
-            setPreview(null);
+            setPreviews([]);
         }
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setPreview(reader.result as string);
-            };
-            reader.readAsDataURL(file);
+        const files = e.target.files;
+        if (files && files.length > 0) {
+            const newPreviews: string[] = [];
+            const readers: FileReader[] = [];
+
+            // Convert FileList to Array
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                readers.push(reader);
+                reader.onloadend = () => {
+                    if (typeof reader.result === 'string') {
+                        newPreviews.push(reader.result);
+                        // Only update state when all files are read
+                        if (newPreviews.length === files.length) {
+                            setPreviews(prev => [...prev, ...newPreviews]);
+                        }
+                    }
+                };
+                reader.readAsDataURL(file);
+            });
         }
     };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[425px] glass border-white/10 text-foreground">
+            <DialogContent className="sm:max-w-[600px] glass border-white/10 text-foreground">
                 <DialogHeader>
-                    <DialogTitle>Add Image</DialogTitle>
+                    <DialogTitle>Add Images to Moodboard</DialogTitle>
                     <DialogDescription>
-                        Add an image to your moodboard. Paste a URL or upload a file.
+                        Upload multiple reference images to extract your Brand DNA.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -97,11 +110,12 @@ export function AddImageDialog({ open, onOpenChange, onAddImage }: AddImageDialo
                             <Label htmlFor="file" className="cursor-pointer">
                                 <div className="border-2 border-dashed border-white/10 rounded-lg p-8 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors">
                                     <Upload className="w-8 h-8 text-muted-foreground" />
-                                    <span className="text-xs text-muted-foreground">Click to upload</span>
+                                    <span className="text-xs text-muted-foreground">Click to upload multiple images</span>
                                 </div>
                                 <Input
                                     id="file"
                                     type="file"
+                                    multiple
                                     className="hidden"
                                     accept="image/*"
                                     onChange={handleFileUpload}
@@ -110,11 +124,25 @@ export function AddImageDialog({ open, onOpenChange, onAddImage }: AddImageDialo
                         </div>
                     )}
 
-                    {/* Preview Area */}
-                    {(url || preview) && (
-                        <div className="relative aspect-video rounded-lg overflow-hidden border border-white/10 bg-black/50 flex items-center justify-center">
+                    {/* Preview Area - Grid for multiple images */}
+                    {activeTab === "upload" && previews.length > 0 && (
+                        <div className="grid grid-cols-3 gap-2 max-h-[300px] overflow-y-auto p-2 bg-black/20 rounded-lg">
+                            {previews.map((src, idx) => (
+                                <div key={idx} className="relative aspect-video rounded-md overflow-hidden border border-white/10 bg-black/50">
+                                    <img 
+                                        src={src} 
+                                        alt={`Preview ${idx}`} 
+                                        className="w-full h-full object-cover"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {activeTab === "url" && url && (
+                         <div className="relative aspect-video rounded-lg overflow-hidden border border-white/10 bg-black/50 flex items-center justify-center">
                             <img 
-                                src={activeTab === "url" ? url : preview || ""} 
+                                src={url} 
                                 alt="Preview" 
                                 className="max-h-full max-w-full object-contain"
                                 onError={(e) => (e.currentTarget.style.display = 'none')}
@@ -124,8 +152,8 @@ export function AddImageDialog({ open, onOpenChange, onAddImage }: AddImageDialo
                 </div>
 
                 <DialogFooter>
-                    <Button onClick={handleAdd} disabled={(!url && !preview)}>
-                        Add to Canvas
+                    <Button onClick={handleAdd} disabled={(!url && previews.length === 0)}>
+                        Add {previews.length > 0 ? `${previews.length} Images` : "to Canvas"}
                     </Button>
                 </DialogFooter>
             </DialogContent>

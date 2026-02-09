@@ -44,6 +44,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import ShimmerButton from "@/components/magicui/shimmer-button";
 import { AddImageDialog } from "@/components/canvas/AddImageDialog";
 import { AddColorDialog } from "@/components/canvas/AddColorDialog";
+import { ComplianceOverlay } from "@/components/editor/ComplianceOverlay";
+import html2canvas from "html2canvas";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 export default function CanvasPage() {
     const {
@@ -69,6 +72,12 @@ export default function CanvasPage() {
     const [createDialogOpen, setCreateDialogOpen] = useState(false);
     const [isImageDialogOpen, setIsImageDialogOpen] = useState(false);
     const [isColorDialogOpen, setIsColorDialogOpen] = useState(false);
+    
+    // Compliance State
+    const [isAuditing, setIsAuditing] = useState(false);
+    const [showComplianceOverlay, setShowComplianceOverlay] = useState(false);
+    const [complianceIssues, setComplianceIssues] = useState<any[]>([]);
+    const [complianceScore, setComplianceScore] = useState<number | null>(null);
 
     useEffect(() => {
         loadBrands();
@@ -168,6 +177,55 @@ export default function CanvasPage() {
             console.error("Analysis failed:", error);
         } finally {
             setIsAnalyzing(false);
+        }
+    }
+
+    async function handleAudit() {
+        if (!constitution) {
+            alert("No constitution found. Please analyze the brand first.");
+            return;
+        }
+
+        setIsAuditing(true);
+        setShowComplianceOverlay(false); // Reset overlay while auditing
+        
+        try {
+            // Capture the canvas area
+            const canvasElement = document.getElementById("canvas-board-area");
+            if (!canvasElement) throw new Error("Canvas element not found");
+
+            const canvas = await html2canvas(canvasElement, {
+                backgroundColor: null, // Transparent background if possible
+                scale: 1, // 1:1 scale for speed
+                logging: false,
+                useCORS: true, // Important for external images
+            });
+
+            const imageBase64 = canvas.toDataURL("image/png");
+
+            // Call Audit API
+            const response = await fetch("/api/agent/audit", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    imageBase64,
+                    constitution
+                }),
+            });
+
+            const result = await response.json();
+
+            if (result.error) throw new Error(result.error);
+
+            setComplianceIssues(result.heatmap_coordinates || []);
+            setComplianceScore(result.compliance_score);
+            setShowComplianceOverlay(true);
+
+        } catch (error) {
+            console.error("Audit failed:", error);
+            alert("Audit failed. See console for details.");
+        } finally {
+            setIsAuditing(false);
         }
     }
 
@@ -313,7 +371,26 @@ export default function CanvasPage() {
 
                     <Tooltip>
                          <TooltipTrigger asChild onPointerDown={(e) => e.preventDefault()}>
-                             <div className="ml-2">
+                             <div className="ml-2 flex gap-2">
+                                {/* AUDIT BUTTON */}
+                                <ShimmerButton 
+                                    onClick={handleAudit} 
+                                    className="h-10 px-4 rounded-full"
+                                    disabled={elements.length === 0 || isAuditing}
+                                    shimmerColor={isAuditing ? "#ef4444" : "#ff0000"} // Red shimmer for audit
+                                    background={isAuditing ? "rgba(239, 68, 68, 0.2)" : "rgba(0,0,0,0.8)"}
+                                >
+                                    {isAuditing ? (
+                                        <Loader2 className="h-4 w-4 animate-spin text-red-500" />
+                                    ) : (
+                                        <div className="flex items-center gap-2 text-red-500/80 hover:text-red-500">
+                                            <AlertTriangle className="h-4 w-4" />
+                                            <span>Audit</span>
+                                        </div>
+                                    )}
+                                </ShimmerButton>
+
+                                {/* ANALYZE BUTTON */}
                                 <ShimmerButton 
                                     onClick={handleAnalyze} 
                                     className="h-10 px-6 rounded-full"
@@ -332,15 +409,70 @@ export default function CanvasPage() {
                              </div>
                         </TooltipTrigger>
                         <TooltipContent side="top">
-                            <p>Generate Constitution</p>
+                            <p>Generate Constitution & Audit</p>
                         </TooltipContent>
                     </Tooltip>
 
                 </TooltipProvider>
             </motion.div>
 
+            {/* COMPLIANCE ALERT - Floating Top Center when issues found */}
+            <AnimatePresence>
+                {showComplianceOverlay && complianceScore !== null && (
+                    <motion.div
+                        initial={{ y: -100, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: -100, opacity: 0 }}
+                        className="absolute top-24 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+                    >
+                        <div className={`
+                            glass px-6 py-3 rounded-full flex items-center gap-4 shadow-2xl border 
+                            ${complianceScore >= 90 ? "border-green-500/50 bg-green-500/10" : "border-red-500/50 bg-red-500/10"}
+                            backdrop-blur-xl pointer-events-auto cursor-pointer hover:scale-105 transition-transform
+                        `}
+                        onClick={() => setShowComplianceOverlay(!showComplianceOverlay)}
+                        >
+                            {complianceScore >= 90 ? (
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-green-500 rounded-full p-1">
+                                        <CheckCircle2 className="w-5 h-5 text-black" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-bold text-green-400">PASSED: {complianceScore}%</span>
+                                        <span className="text-[10px] text-green-300/70 uppercase tracking-wider">Brand Constituiton Verified</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-red-500 rounded-full p-1 animate-pulse">
+                                        <AlertTriangle className="w-5 h-5 text-white" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-bold text-red-400">VIOLATION: {complianceScore}%</span>
+                                        <span className="text-[10px] text-red-300/70 uppercase tracking-wider">{complianceIssues.length} Issues Detected</span>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-8 w-8 p-0 rounded-full hover:bg-white/10 ml-2"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowComplianceOverlay(false);
+                                }}
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </Button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* MAIN CANVAS AREA */}
             <div 
+                id="canvas-board-area" // ID for html2canvas
                 className="flex-1 relative cursor-crosshair active:cursor-grabbing"
                 onClick={() => selectElement(null)} 
             >
@@ -351,6 +483,13 @@ export default function CanvasPage() {
                 </div>
                 
                 <CanvasBoard /> 
+
+                {/* COMPLIANCE OVERLAY LAYER */}
+                <ComplianceOverlay 
+                    issues={complianceIssues}
+                    isVisible={showComplianceOverlay && complianceIssues.length > 0}
+                    onClose={() => setShowComplianceOverlay(false)}
+                />
             </div>
 
             {/* CONSTITUTION DRAWER */}
